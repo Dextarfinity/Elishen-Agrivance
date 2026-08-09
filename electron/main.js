@@ -10,7 +10,11 @@ function createWindow() {
     webPreferences: { contextIsolation: true },
   });
   win.removeMenu();
-  win.loadFile(path.join(__dirname, '..', 'app', 'index.html'));
+  // packaged: UI ships in resources\app (extraResources); dev: use ..\app from the repo
+  const ui = app.isPackaged
+    ? path.join(process.resourcesPath, 'app', 'index.html')
+    : path.join(__dirname, '..', 'app', 'index.html');
+  win.loadFile(ui);
 }
 
 app.whenReady().then(() => {

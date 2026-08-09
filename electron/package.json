@@ -16,9 +16,10 @@
     "productName": "Elishen Agrivance",
     "files": [
       "main.js",
-      "preload.js",
-      "build/**/*",
-      "../app/**/*"
+      "build/**/*"
+    ],
+    "extraResources": [
+      { "from": "../app", "to": "app" }
     ],
     "win": {
       "target": "nsis",
