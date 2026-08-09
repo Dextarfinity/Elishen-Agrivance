@@ -1,0 +1,53 @@
+# Builds an UNSIGNED iOS .ipa on GitHub's macOS runners (no Mac needed locally).
+# The artifact must be signed to run on an iPhone — install it with Sideloadly
+# (Windows) + an Apple ID, or properly via Xcode/TestFlight once there's an
+# Apple Developer account.
+#
+# Runs on demand (Actions tab -> iOS unsigned IPA -> Run workflow) and
+# automatically whenever this file itself changes.
+name: iOS unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/ios-unsigned.yml
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Capacitor deps
+        working-directory: capacitor
+        run: npm ci
+
+      - name: Sync web assets into the iOS project
+        working-directory: capacitor
+        run: npx cap sync ios
+
+      - name: Build app (unsigned)
+        working-directory: capacitor/ios/App
+        run: |
+          xcodebuild -workspace App.xcworkspace -scheme App \
+            -configuration Release -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY=""
+
+      - name: Package into .ipa
+        working-directory: capacitor/ios/App
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -r ElishenAgrivance-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ElishenAgrivance-unsigned-ipa
+          path: capacitor/ios/App/ElishenAgrivance-unsigned.ipa
+          retention-days: 30
