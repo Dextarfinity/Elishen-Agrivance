@@ -876,7 +876,7 @@ app.get('/api/users', wrap(async (req, res) => {
 }));
 // minimal roster for the login screen's name picker — no PINs, no pay data
 app.get('/api/login_users', wrap(async (req, res) => {
-  const { rows } = await q('SELECT id, name, roles FROM users WHERE active ORDER BY name');
+  const { rows } = await q('SELECT id, name, roles, active FROM users WHERE active ORDER BY name');
   res.json(rows);
 }));
 app.post('/api/login', wrap(async (req, res) => {
