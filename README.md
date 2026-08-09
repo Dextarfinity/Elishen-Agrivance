@@ -76,16 +76,11 @@ once in Settings → API address, or on the login screen).
 
 ---
 
-## 4. iOS for Henry & Katherine (two options)
+## 4. iOS for Henry & Katherine — native app
 
-**Option A — PWA via the Cloudflare domain (recommended, no Mac needed).**
-Once the system is on HTTPS (see §5), Safari gets full camera + GPS access:
-1. On the iPhone, open `https://your-domain` in Safari.
-2. Share button → **Add to Home Screen**.
-It behaves like an app: full screen, ES icon, login remembered. This is the
-practical route — Apple requires a Mac + $99/yr developer account for a real app.
-
-**Option B — native iOS app (requires a Mac with Xcode).**
+The system is distributed as installed apps on every platform (no public website).
+For iOS that means the native Capacitor app — **this requires a Mac with Xcode
+and an Apple Developer account ($99/yr)**; there is no way around Apple's rules.
 ```bash
 cd capacitor
 npm install @capacitor/ios
@@ -95,7 +90,27 @@ npx cap open ios      # opens Xcode: set signing team, then run/archive
 ```
 Add to `ios/App/App/Info.plist`: `NSCameraUsageDescription` and
 `NSLocationWhenInUseUsageDescription` (attendance selfie + geotag).
-Distribution to just the two owners can use Ad Hoc or TestFlight.
+Distribution to just the two owners: **TestFlight** (easiest) or Ad Hoc with
+their device UDIDs. No Mac available? A cloud Mac (MacinCloud/Codemagic CI)
+can do the build — or, as a stopgap only, the HTTPS web app on Safari works,
+but the goal is app-only.
+
+## 4b. App-only lockdown (after everyone has the apps)
+
+Set in `backend\.env`:
+```
+APP_ONLY=1
+```
+and restart the backend. The server then serves **no web UI at all** — browsers
+get a 404; only the installed apps (which carry their own bundled UI) can use
+the system. Do this only AFTER the APK and desktop installer are distributed,
+or office browser access dies immediately.
+
+> Honest note: app-only hides the UI but the **API endpoints remain the real
+> attack surface** — anyone on the network can still send requests directly.
+> The upgrade that actually locks trespassers out is **login tokens + hashed
+> PINs** (server refuses any request without a valid session token). Do that
+> before exposing anything through Cloudflare.
 
 ---
 

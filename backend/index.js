@@ -82,11 +82,18 @@ app.use('/api', (req, res, next) => {
     next();
   })().catch((e) => res.status(500).json({ error: e.message }));
 });
-// Serve the shared UI so any office device can open http://<server-pc>:3001
-// no-cache: browsers must revalidate so UI updates reach everyone immediately
-app.use(express.static(require('path').join(__dirname, '..', 'app'), {
-  setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
-}));
+// APP-ONLY MODE: once staff have the APK and owners have the desktop app,
+// set APP_ONLY=1 in backend\.env and restart — the server stops serving the
+// web UI entirely (browsers get nothing; only the installed apps' bundled UI
+// talks to the API). Until then the UI is served for the office browser.
+if (process.env.APP_ONLY === '1') {
+  app.get('/', (req, res) => res.status(404).send('Not found'));
+} else {
+  // no-cache: browsers must revalidate so UI updates reach everyone immediately
+  app.use(express.static(require('path').join(__dirname, '..', 'app'), {
+    setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache'),
+  }));
+}
 
 // ---------- helpers ----------
 const q = (text, params) => pool.query(text, params);
