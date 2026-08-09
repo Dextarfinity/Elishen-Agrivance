@@ -1,0 +1,22 @@
+{
+  "name": "capacitor",
+  "version": "1.0.0",
+  "description": "The mobile app is the same `app/` UI wrapped by Capacitor. It talks to the office API server over the LAN — set the API address in the app's Settings screen (e.g. `http://192.168.1.50:3001`).",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.3",
+    "@capacitor/cli": "^6.2.1",
+    "@capacitor/core": "^6.2.1",
+    "@capacitor/filesystem": "^6.0.4",
+    "@capacitor/local-notifications": "^6.1.3",
+    "@capacitor/share": "^6.0.4"
+  }
+}

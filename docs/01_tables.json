@@ -1,0 +1,1556 @@
+{
+  "Data (Hidden)": {
+    "state": "hidden",
+    "header_row": 1,
+    "headers": [
+      [
+        "A",
+        "Order Date"
+      ],
+      [
+        "B",
+        "QTY"
+      ],
+      [
+        "C",
+        "Month List"
+      ],
+      [
+        "D",
+        "1"
+      ],
+      [
+        "E",
+        "#N/A"
+      ],
+      [
+        "H",
+        "Item"
+      ],
+      [
+        "J",
+        "Purchases"
+      ],
+      [
+        "L",
+        "Vendors"
+      ]
+    ],
+    "last_data_row": 3500,
+    "data_rows": 3499,
+    "samples": [
+      [
+        "#REF!",
+        "#REF!",
+        "January",
+        "",
+        "",
+        "#N/A",
+        "Supremo Infinity 1 - Chick Boo",
+        ""
+      ],
+      [
+        "#REF!",
+        "#REF!",
+        "February",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "#REF!",
+        "#REF!",
+        "March",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Instructions": {
+    "state": "hidden",
+    "header_row": 32,
+    "headers": [
+      [
+        "C",
+        "VENDORS"
+      ],
+      [
+        "E",
+        "EXPENSES"
+      ],
+      [
+        "G",
+        "ACCOUNTS"
+      ],
+      [
+        "I",
+        "Click the buttons to jump directly to each             section\u2019s instructions for easier navigation."
+      ]
+    ],
+    "last_data_row": 826,
+    "data_rows": 794,
+    "samples": [
+      [
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "INVENTORY",
+        "BILL OF MATERIALS",
+        "INVENTORY DASHBOARD",
+        ""
+      ]
+    ]
+  },
+  "Setup": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "SET YOUR CURRENCY"
+      ],
+      [
+        "G",
+        "NOTE FROM CREATOR"
+      ],
+      [
+        "J",
+        "START DATE"
+      ],
+      [
+        "M",
+        "COVERAGE PERIOD SUMMARY"
+      ],
+      [
+        "X",
+        "ANNUAL PROFIT GOALS"
+      ]
+    ],
+    "last_data_row": 167,
+    "data_rows": 161,
+    "samples": [
+      [
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "",
+        "Inventory Type \u2192 main group (e",
+        "MONTH",
+        "2026",
+        "MONTH"
+      ],
+      [
+        "",
+        "",
+        "",
+        "2026-01-01 00:00:00",
+        "Calendar Year"
+      ]
+    ]
+  },
+  "Sales Generator": {
+    "state": "visible",
+    "header_row": 20,
+    "headers": [
+      [
+        "B",
+        "DESCRIPTION"
+      ],
+      [
+        "E",
+        "QTY"
+      ],
+      [
+        "F",
+        "PRICE"
+      ],
+      [
+        "G",
+        "TOTAL"
+      ],
+      [
+        "J",
+        "AVAILABLE STOCKS"
+      ],
+      [
+        "L",
+        "PROMOTION"
+      ],
+      [
+        "M",
+        "ADJUST PRICE HERE"
+      ]
+    ],
+    "last_data_row": 42,
+    "data_rows": 22,
+    "samples": [
+      [
+        "",
+        "",
+        "",
+        "0",
+        "-",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        "",
+        "0",
+        "-",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        "",
+        "0",
+        "-",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Sales Database": {
+    "state": "visible",
+    "header_row": 5,
+    "headers": [
+      [
+        "A",
+        "SALES #"
+      ],
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "CUSTOMER"
+      ],
+      [
+        "D",
+        "STORES/FARMS"
+      ],
+      [
+        "E",
+        "TERM"
+      ],
+      [
+        "F",
+        "CONTACT NO."
+      ],
+      [
+        "G",
+        "MODE OF PAYMENT"
+      ],
+      [
+        "H",
+        "ITEMS"
+      ],
+      [
+        "I",
+        "QTY"
+      ],
+      [
+        "J",
+        "TOTAL PRICE"
+      ],
+      [
+        "K",
+        "SUBTOTAL"
+      ],
+      [
+        "L",
+        "TAX %"
+      ],
+      [
+        "M",
+        "DISCOUNT %"
+      ],
+      [
+        "N",
+        "DISCOUNT"
+      ],
+      [
+        "O",
+        "TOTAL"
+      ],
+      [
+        "P",
+        "SALES REP"
+      ],
+      [
+        "Q",
+        "DUE DATE"
+      ],
+      [
+        "S",
+        "PAYMENT RECEIVED"
+      ],
+      [
+        "T",
+        "DATE RECEIVED"
+      ]
+    ],
+    "last_data_row": 30,
+    "data_rows": 25,
+    "samples": [
+      [
+        "4.0",
+        "2026-06-15 00:00:00",
+        "name",
+        "FARM 1",
+        "TERM (June 1, 2026 - June 14, ",
+        "CONTACT NO.",
+        "Cash",
+        "Item 1",
+        "1.0",
+        "",
+        "4600.0",
+        "0.12",
+        "0.0",
+        "30.0",
+        "5122.000000000001",
+        "USER 1",
+        "2026-06-19 00:00:00",
+        "2500.0",
+        "2026-06-19 00:00:00"
+      ],
+      [
+        "4.0",
+        "2026-06-15 00:00:00",
+        "NAME",
+        "FARM 1",
+        "TERM (June 1, 2026 - June 14, ",
+        "CONTACT NO.",
+        "Cash",
+        "Item 2",
+        "2.0",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "USER 1",
+        "",
+        "",
+        ""
+      ],
+      [
+        "4.0",
+        "2026-06-15 00:00:00",
+        "NAME",
+        "FARM 1",
+        "TERM (June 1, 2026 - June 14, ",
+        "CONTACT NO.",
+        "Cash",
+        "Item 4",
+        "4.0",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "USER 1",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Accounts Receivable": {
+    "state": "visible",
+    "header_row": 7,
+    "headers": [
+      [
+        "A",
+        "SALES #"
+      ],
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "CUSTOMER"
+      ],
+      [
+        "D",
+        "STORES/FARMS"
+      ],
+      [
+        "E",
+        "TERM"
+      ],
+      [
+        "F",
+        "CONTACT NO."
+      ],
+      [
+        "G",
+        "MODE OF PAYMENT"
+      ],
+      [
+        "H",
+        "ITEMS"
+      ],
+      [
+        "I",
+        "QTY"
+      ],
+      [
+        "J",
+        "TOTAL PRICE"
+      ],
+      [
+        "K",
+        "SUBTOTAL"
+      ],
+      [
+        "L",
+        "TAX %"
+      ],
+      [
+        "M",
+        "DISCOUNT %"
+      ],
+      [
+        "N",
+        "DISCOUNT"
+      ],
+      [
+        "O",
+        "TOTAL"
+      ],
+      [
+        "P",
+        "SALES REP"
+      ],
+      [
+        "Q",
+        "DUE DATE"
+      ],
+      [
+        "S",
+        "PAYMENT RECEIVED"
+      ],
+      [
+        "T",
+        "DATE RECEIVED"
+      ],
+      [
+        "W",
+        "CUSTOMER NAME"
+      ],
+      [
+        "X",
+        "OUTSTANDING AMOUNT"
+      ],
+      [
+        "Y",
+        "DUE DATE"
+      ],
+      [
+        "Z",
+        "DAYS PAST DUE"
+      ],
+      [
+        "AB",
+        "CUSTOMER NAME"
+      ],
+      [
+        "AC",
+        "OUTSTANDING AMOUNT"
+      ],
+      [
+        "AD",
+        "DUE DATE"
+      ],
+      [
+        "AE",
+        "DAYS PAST DUE"
+      ]
+    ],
+    "last_data_row": 1996,
+    "data_rows": 1989,
+    "samples": [
+      [
+        "9",
+        "2026-06-14 00:00:00",
+        "NAME 4",
+        "FARM 2",
+        "TERM (June 1, 2026 - June 14, ",
+        "CONTACT NO.",
+        "Cash",
+        "Item 1",
+        "1",
+        "",
+        "500",
+        "0.12",
+        "0",
+        "30",
+        "530",
+        "USER 1",
+        "2026-06-15 00:00:00",
+        "",
+        "",
+        "NAME",
+        "2122",
+        "2026-06-19 00:00:00",
+        "39",
+        "NAME",
+        "2122",
+        "2026-06-19 00:00:00",
+        "39"
+      ],
+      [
+        "9",
+        "2026-06-14 00:00:00",
+        "NAME 4",
+        "FARM 2",
+        "TERM (June 1, 2026 - June 14, ",
+        "CONTACT NO.",
+        "Cash",
+        "Item 2",
+        "2",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "USER 1",
+        "",
+        "",
+        "",
+        "NAME 2",
+        "2458.000000000001",
+        "2026-06-16 00:00:00",
+        "42",
+        "NAME 2",
+        "2458",
+        "2026-06-16 00:00:00",
+        "42"
+      ],
+      [
+        "10",
+        "2026-06-14 00:00:00",
+        "NAME 4",
+        "FARM 2",
+        "TERM (June 1, 2026 - June 14, ",
+        "CONTACT NO.",
+        "Cash",
+        "Item 1",
+        "1",
+        "",
+        "1700",
+        "0.12",
+        "0",
+        "30",
+        "1874",
+        "USER 1",
+        "2026-06-16 00:00:00",
+        "",
+        "",
+        "NAME 3",
+        "82.00000000000091",
+        "2026-06-15 00:00:00",
+        "43",
+        "NAME 3",
+        "82",
+        "2026-06-15 00:00:00",
+        "43"
+      ]
+    ]
+  },
+  "Financial Allocation": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "USER"
+      ],
+      [
+        "D",
+        "ALLOCATION"
+      ],
+      [
+        "E",
+        "OLD RATE"
+      ],
+      [
+        "F",
+        "NEW RATE"
+      ],
+      [
+        "G",
+        "REMARKS"
+      ]
+    ],
+    "last_data_row": 27,
+    "data_rows": 21,
+    "samples": [
+      [
+        "2026-06-16 00:00:00",
+        "USER ALLOCATION 1",
+        "Marketing",
+        "",
+        "0.2",
+        ""
+      ],
+      [
+        "2026-06-17 00:00:00",
+        "USER ALLOCATION 2",
+        "Salary",
+        "",
+        "0.5",
+        ""
+      ],
+      [
+        "",
+        "",
+        "Marketing",
+        "0.2",
+        "0.3",
+        ""
+      ]
+    ]
+  },
+  "Sales Rep Comms": {
+    "state": "visible",
+    "header_row": 11,
+    "headers": [
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "SALES #"
+      ],
+      [
+        "D",
+        "ITEM"
+      ],
+      [
+        "E",
+        "TOTAL PRICE"
+      ],
+      [
+        "F",
+        "SUBTOTAL"
+      ],
+      [
+        "G",
+        "TOTAL"
+      ],
+      [
+        "H",
+        "REMARKS"
+      ]
+    ],
+    "last_data_row": 26,
+    "data_rows": 15,
+    "samples": [
+      [
+        "2026-06-14 00:00:00",
+        "6",
+        "Item 1",
+        "",
+        "5700",
+        "6354",
+        ""
+      ],
+      [
+        "2026-06-14 00:00:00",
+        "6",
+        "Item 2",
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "2026-06-14 00:00:00",
+        "6",
+        "Item 4",
+        "",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Vendors": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "VENDOR"
+      ],
+      [
+        "C",
+        "CONTACT NAME"
+      ],
+      [
+        "D",
+        "PHONE"
+      ],
+      [
+        "E",
+        "EMAIL"
+      ],
+      [
+        "F",
+        "ADDRESS"
+      ],
+      [
+        "G",
+        "COUNTRY"
+      ],
+      [
+        "H",
+        "NOTES"
+      ],
+      [
+        "M",
+        "ALL"
+      ]
+    ],
+    "last_data_row": 6,
+    "data_rows": 0,
+    "samples": []
+  },
+  "Inventory": {
+    "state": "visible",
+    "header_row": 8,
+    "headers": [
+      [
+        "B",
+        "ITEM"
+      ],
+      [
+        "C",
+        "SKU"
+      ],
+      [
+        "D",
+        "CATEGORY"
+      ],
+      [
+        "E",
+        "TYPE"
+      ],
+      [
+        "F",
+        "INITIAL STOCK"
+      ],
+      [
+        "G",
+        "ON HAND"
+      ],
+      [
+        "H",
+        "MINIMUM STOCK"
+      ],
+      [
+        "I",
+        "STATUS"
+      ],
+      [
+        "J",
+        "SALES PRICE"
+      ],
+      [
+        "K",
+        "COST"
+      ],
+      [
+        "L",
+        "PROFIT"
+      ],
+      [
+        "M",
+        "MARGIN"
+      ],
+      [
+        "N",
+        "PREFERRED VENDOR"
+      ],
+      [
+        "O",
+        "UNITS IN PURCHASE"
+      ],
+      [
+        "P",
+        "PROMOTION"
+      ],
+      [
+        "Q",
+        "NOTES"
+      ],
+      [
+        "V",
+        "ALL"
+      ]
+    ],
+    "last_data_row": 56,
+    "data_rows": 48,
+    "samples": [
+      [
+        "Supremo Infinity 1 - Chick Boo",
+        "",
+        "Gamefowl",
+        "Feed",
+        "",
+        "0",
+        "",
+        "Out of Stock",
+        "2300.0",
+        "",
+        "2300",
+        "",
+        "",
+        "0",
+        "B1T1",
+        "",
+        "Supremo Infinity 1 - Chick Boo"
+      ],
+      [
+        "Supremo Infinity 2 - Chick Gro",
+        "",
+        "Gamefowl",
+        "Feed",
+        "",
+        "0",
+        "",
+        "Out of Stock",
+        "2060.0",
+        "",
+        "2060",
+        "",
+        "",
+        "0",
+        "20% OFF",
+        "",
+        "Supremo Infinity 2 - Chick Gro"
+      ],
+      [
+        "Supremo Infinity 2.1 - Develop",
+        "",
+        "Gamefowl",
+        "Feed",
+        "",
+        "0",
+        "",
+        "Out of Stock",
+        "2040.0",
+        "",
+        "2040",
+        "",
+        "",
+        "0",
+        "",
+        "",
+        "Supremo Infinity 2.1 - Develop"
+      ]
+    ]
+  },
+  "Sold Items": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "ORDER DATE"
+      ],
+      [
+        "C",
+        "RECEIVED DATE"
+      ],
+      [
+        "D",
+        "ID"
+      ],
+      [
+        "E",
+        "ITEM"
+      ],
+      [
+        "F",
+        "SKU"
+      ],
+      [
+        "G",
+        "PURCHASE QTY"
+      ],
+      [
+        "H",
+        "RECEIVED QTY"
+      ],
+      [
+        "I",
+        "DIFFERENCE"
+      ],
+      [
+        "J",
+        "UNIT COST"
+      ],
+      [
+        "K",
+        "TOTAL COST"
+      ],
+      [
+        "L",
+        "ACCOUNT"
+      ],
+      [
+        "M",
+        "STATUS"
+      ],
+      [
+        "N",
+        "VENDOR"
+      ],
+      [
+        "O",
+        "SHIPPING DAYS"
+      ],
+      [
+        "P",
+        "NOTES"
+      ]
+    ],
+    "last_data_row": 7,
+    "data_rows": 1,
+    "samples": [
+      [
+        "",
+        "",
+        "",
+        "Supremo Infinity 1 - Chick Boo",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Expenses": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "ID"
+      ],
+      [
+        "D",
+        "CATEGORY"
+      ],
+      [
+        "E",
+        "AMOUNT"
+      ],
+      [
+        "F",
+        "TAX"
+      ],
+      [
+        "G",
+        "SHIPPING"
+      ],
+      [
+        "H",
+        "FEES"
+      ],
+      [
+        "I",
+        "NET AMOUNT"
+      ],
+      [
+        "J",
+        "ACCOUNT"
+      ],
+      [
+        "K",
+        "DESCRIPTION"
+      ],
+      [
+        "L",
+        "REMARKS"
+      ]
+    ],
+    "last_data_row": 8000,
+    "data_rows": 7994,
+    "samples": [
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "0",
+        "",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "0",
+        "",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "0",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Manual Inventory": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "BATCH NO"
+      ],
+      [
+        "D",
+        "ITEM"
+      ],
+      [
+        "E",
+        "SKU"
+      ],
+      [
+        "F",
+        "QTY"
+      ],
+      [
+        "G",
+        "NOTES"
+      ]
+    ],
+    "last_data_row": 6,
+    "data_rows": 0,
+    "samples": []
+  },
+  "Bill of Materials": {
+    "state": "hidden",
+    "header_row": 7,
+    "headers": [
+      [
+        "I",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "O",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "U",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "AA",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "AG",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "AM",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "AS",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "AY",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "BE",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "BK",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "BQ",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "BW",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "CC",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "CI",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "CO",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "CU",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "DA",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "DG",
+        "F I N I S H E D   P R O D U C T"
+      ],
+      [
+        "DM",
+        "F I N I S H E D   P R O D U C T"
+      ]
+    ],
+    "last_data_row": 99,
+    "data_rows": 92,
+    "samples": [
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ],
+      [
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)",
+        "M A K E S   (required)"
+      ]
+    ]
+  },
+  "Balance": {
+    "state": "visible",
+    "header_row": 6,
+    "headers": [
+      [
+        "B",
+        "DATE"
+      ],
+      [
+        "C",
+        "ID"
+      ],
+      [
+        "D",
+        "ACCOUNT"
+      ],
+      [
+        "E",
+        "AMOUNT"
+      ],
+      [
+        "F",
+        "DESCRIPTION"
+      ],
+      [
+        "G",
+        "REMARKS"
+      ]
+    ],
+    "last_data_row": 6,
+    "data_rows": 0,
+    "samples": []
+  },
+  "Accounts": {
+    "state": "visible",
+    "header_row": 14,
+    "headers": [
+      [
+        "B",
+        "ACCOUNT"
+      ],
+      [
+        "C",
+        "CURRENT BALANCE"
+      ],
+      [
+        "E",
+        "BEGINNING BALANCE"
+      ],
+      [
+        "G",
+        "TOTAL DEPOSITS"
+      ],
+      [
+        "I",
+        "TOTAL WITHDRAWALS"
+      ],
+      [
+        "K",
+        "TOTAL BALANCE +/-"
+      ],
+      [
+        "M",
+        "LAST CHECKED"
+      ]
+    ],
+    "last_data_row": 55,
+    "data_rows": 41,
+    "samples": [
+      [
+        "Cash",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        ""
+      ],
+      [
+        "Gcash",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        ""
+      ],
+      [
+        "Bank",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        "\u20b1",
+        ""
+      ]
+    ]
+  },
+  "Inventory Dashboard": {
+    "state": "visible",
+    "header_row": 7,
+    "headers": [
+      [
+        "B",
+        "T O T A L   P R O D U C T S"
+      ],
+      [
+        "G",
+        "T O T A L   M A T E R I A L S"
+      ],
+      [
+        "P",
+        "Q U A N T I T Y   I N   S T O C K"
+      ],
+      [
+        "W",
+        "Q U A N T I T Y   S O L D"
+      ],
+      [
+        "AD",
+        "JAN"
+      ],
+      [
+        "AE",
+        "FEB"
+      ],
+      [
+        "AF",
+        "MAR"
+      ],
+      [
+        "AG",
+        "APR"
+      ],
+      [
+        "AH",
+        "MAY"
+      ],
+      [
+        "AI",
+        "JUN"
+      ],
+      [
+        "AJ",
+        "JUL"
+      ],
+      [
+        "AK",
+        "AUG"
+      ],
+      [
+        "AL",
+        "SEP"
+      ],
+      [
+        "AM",
+        "OCT"
+      ],
+      [
+        "AN",
+        "NOV"
+      ],
+      [
+        "AO",
+        "DEC"
+      ]
+    ],
+    "last_data_row": 171,
+    "data_rows": 164,
+    "samples": [
+      [
+        "0",
+        "0",
+        "0",
+        "#N/A",
+        "2024-01-01 00:00:00",
+        "2024-02-01 00:00:00",
+        "2024-03-01 00:00:00",
+        "2024-04-01 00:00:00",
+        "2024-05-01 00:00:00",
+        "2024-06-01 00:00:00",
+        "2024-07-01 00:00:00",
+        "2024-08-01 00:00:00",
+        "2024-09-01 00:00:00",
+        "2024-10-01 00:00:00",
+        "2024-11-01 00:00:00",
+        "2024-12-01 00:00:00"
+      ],
+      [
+        "",
+        "",
+        "",
+        "",
+        "31",
+        "29",
+        "31",
+        "30",
+        "31",
+        "30",
+        "31",
+        "31",
+        "30",
+        "31",
+        "30",
+        "31"
+      ],
+      [
+        "Income",
+        "Expense",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        ""
+      ]
+    ]
+  },
+  "Custom Bookkeeping Dashboard": {
+    "state": "visible",
+    "header_row": 5,
+    "headers": [
+      [
+        "B",
+        "B O O K K E E P I N G   S U M M A R Y"
+      ],
+      [
+        "G",
+        "T O T A L   I N C O M E"
+      ],
+      [
+        "L",
+        "T O T A L   E X P E N S E S"
+      ],
+      [
+        "P",
+        "P R O F I T   /   L O S S"
+      ]
+    ],
+    "last_data_row": 63,
+    "data_rows": 58,
+    "samples": [
+      [
+        "",
+        "0",
+        "0",
+        "0"
+      ],
+      [
+        "START PERIOD",
+        "",
+        "",
+        ""
+      ],
+      [
+        "END PERIOD",
+        "Total Income",
+        "Total Expenses",
+        ""
+      ]
+    ]
+  },
+  "Sales Tax": {
+    "state": "visible",
+    "header_row": 7,
+    "headers": [
+      [
+        "B",
+        "T O T A L   T A X   C O L L E C T E D"
+      ],
+      [
+        "J",
+        "T O T A L   T A X   P A I D"
+      ],
+      [
+        "T",
+        "D I F F E R E N C E"
+      ]
+    ],
+    "last_data_row": 27,
+    "data_rows": 20,
+    "samples": [
+      [
+        "#N/A",
+        "0",
+        "#N/A"
+      ],
+      [
+        "",
+        "",
+        ""
+      ],
+      [
+        "",
+        "",
+        ""
+      ]
+    ]
+  }
+}

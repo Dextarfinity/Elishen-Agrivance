@@ -1,0 +1,12 @@
+{
+  "appId": "com.elishen.agrivance",
+  "appName": "Elishen Agrivance",
+  "webDir": "../app",
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
