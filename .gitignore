@@ -1,0 +1,35 @@
+# ---- secrets: never commit credentials ----
+.env
+backend/.env
+*.env.local
+
+# ---- dependencies ----
+node_modules/
+
+# ---- database backups & dumps (large, and private business data) ----
+db/backups/
+
+# ---- build outputs ----
+electron/dist/
+electron/out/
+capacitor/android/.gradle/
+capacitor/android/build/
+capacitor/android/app/build/
+capacitor/android/app/release/
+capacitor/android/local.properties
+# web assets are copied in by `npx cap sync` — regenerate, don't commit
+capacitor/android/app/src/main/assets/public/
+capacitor/android/app/src/main/assets/capacitor.config.json
+capacitor/android/app/src/main/assets/capacitor.plugins.json
+
+# ---- OS / editor noise ----
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.log
+.vscode/
+.idea/
+
+# ---- OneDrive conflict copies ----
+*-PC.??*
+*conflicted copy*

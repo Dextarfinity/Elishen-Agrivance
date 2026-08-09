@@ -1,0 +1,2440 @@
+{
+  "Data (Hidden)": [
+    {
+      "example_cell": "D1",
+      "formula": "=xmatch('Inventory Dashboard'!R35,C2:C13)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "E1",
+      "formula": "=FILTER(A2:B1000,MONTH(A2:A1000)=D1)\"),\"#N/A",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "A2",
+      "formula": "=Sales!B7",
+      "occurrences": 999
+    },
+    {
+      "example_cell": "B2",
+      "formula": "=Sales!F7",
+      "occurrences": 3499
+    },
+    {
+      "example_cell": "H2",
+      "formula": "=FILTER(Inventory!B9:B1008, Inventory!E9:E1008=\"Product\")\"),\"#N/A",
+      "occurrences": 1
+    }
+  ],
+  "Instructions": [],
+  "Setup": [
+    {
+      "example_cell": "M8",
+      "formula": "=Y9",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "O8",
+      "formula": "=AA9",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "Q8",
+      "formula": "=AC9",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "S8",
+      "formula": "=AE9",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "U8",
+      "formula": "=AG9",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "M9",
+      "formula": "=DATE(K10, MONTH(K8&1),1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "O9",
+      "formula": "=EDATE(M20,1)",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "Q9",
+      "formula": "=EDATE(O20,1)",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "S9",
+      "formula": "=EDATE(Q20,1)",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "U9",
+      "formula": "=EDATE(S20,1)",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "X9",
+      "formula": "=IF(MONTH(DATEVALUE(K8&\"1\"))<>1,\"Fiscal Year-End\",\"Calendar Year\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Y9",
+      "formula": "=IF(MONTH(DATEVALUE(K8&\"1\"))<>1,K10+1,K10)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AA9",
+      "formula": "=Y9+1",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AC9",
+      "formula": "=AA9+1",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AE9",
+      "formula": "=AC9+1",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG9",
+      "formula": "=AE9+1",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "U10",
+      "formula": "=EDATE(U9,1)",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "W10",
+      "formula": "=TEXT(X10,\"MMM\")",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "X10",
+      "formula": "=DATE(2050, MONTH(K8&1),1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Y10",
+      "formula": "=$C$9",
+      "occurrences": 80
+    },
+    {
+      "example_cell": "X11",
+      "formula": "=EDATE(X10,1)",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "A18",
+      "formula": "=IF(D24=\"\",B24,D24)",
+      "occurrences": 3
+    },
+    {
+      "example_cell": "Z22",
+      "formula": "=sum(Z10:Z21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB22",
+      "formula": "=sum(AB10:AB21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD22",
+      "formula": "=sum(AD10:AD21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF22",
+      "formula": "=sum(AF10:AF21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH22",
+      "formula": "=sum(AH10:AH21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z24",
+      "formula": "=IFERROR(AVERAGE(Z10:Z21),0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB24",
+      "formula": "=IFERROR(AVERAGE(AB10:AB21),0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD24",
+      "formula": "=IFERROR(AVERAGE(AD10:AD21),0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF24",
+      "formula": "=IFERROR(AVERAGE(AF10:AF21),0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH24",
+      "formula": "=IFERROR(AVERAGE(AH10:AH21),0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z25",
+      "formula": "=MIN(Z10:Z21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB25",
+      "formula": "=MIN(AB10:AB21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD25",
+      "formula": "=MIN(AD10:AD21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF25",
+      "formula": "=MIN(AF10:AF21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH25",
+      "formula": "=MIN(AH10:AH21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z26",
+      "formula": "=MAX(Z10:Z21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB26",
+      "formula": "=MAX(AB10:AB21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD26",
+      "formula": "=MAX(AD10:AD21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF26",
+      "formula": "=MAX(AF10:AF21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH26",
+      "formula": "=MAX(AH10:AH21)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "X46",
+      "formula": "=X43+1",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "C108",
+      "formula": "=TEXT(M9,\"MMM YYYY\")",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "D108",
+      "formula": "=Z10",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "C120",
+      "formula": "=TEXT(O9,\"MMM YYYY\")",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "D120",
+      "formula": "=AB10",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "C132",
+      "formula": "=TEXT(Q9,\"MMM YYYY\")",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "D132",
+      "formula": "=AD10",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "C144",
+      "formula": "=TEXT(S9,\"MMM YYYY\")",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "D144",
+      "formula": "=AF10",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "C156",
+      "formula": "=TEXT(U9,\"MMM YYYY\")",
+      "occurrences": 12
+    },
+    {
+      "example_cell": "D156",
+      "formula": "=AH10",
+      "occurrences": 12
+    }
+  ],
+  "Sales Generator": [
+    {
+      "example_cell": "F21",
+      "formula": "=IFERROR(\n  VLOOKUP($B21, Inventory!$B$9:$J42, 9, FALSE),\n  \"\"\n)",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "G21",
+      "formula": "=F21*E21",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "J21",
+      "formula": "=IF(B21=\"\",\"-\",IFERROR(LOOKUP(B21,Inventory!$B$9:$B42,Inventory!$G$9:$G42),\"-\"))",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "L21",
+      "formula": "=IF(B21=\"\",\"\",IFERROR(LOOKUP(B21,Inventory!$B$9:$B42,Inventory!$P$9:$P42),\"\"))",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "G33",
+      "formula": "=SUM(G20:G32)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "G36",
+      "formula": "=sum(M21:M31)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "G37",
+      "formula": "=G33 * (1 + G34) * (1 - G35) - G36",
+      "occurrences": 1
+    }
+  ],
+  "Sales Database": [],
+  "Accounts Receivable": [
+    {
+      "example_cell": "G5",
+      "formula": "=SUM(O:O)-SUM(S:S)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "W6",
+      "formula": "=TODAY()",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "A8",
+      "formula": "=FILTER('Sales Database'!A6:T1996,LOWER('Sales Database'!C6:C1996)=LOWER(A5))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B8",
+      "formula": "=\"COMPUTED_VALUE\"",
+      "occurrences": 56
+    },
+    {
+      "example_cell": "C8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"NAME 4",
+      "occurrences": 10
+    },
+    {
+      "example_cell": "D8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"FARM 2",
+      "occurrences": 8
+    },
+    {
+      "example_cell": "E8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"TERM (June 1, 2026 - June 14, 2026)",
+      "occurrences": 8
+    },
+    {
+      "example_cell": "F8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"CONTACT NO.",
+      "occurrences": 8
+    },
+    {
+      "example_cell": "G8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"Cash",
+      "occurrences": 8
+    },
+    {
+      "example_cell": "H8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"Item 1",
+      "occurrences": 3
+    },
+    {
+      "example_cell": "P8",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"USER 1",
+      "occurrences": 8
+    },
+    {
+      "example_cell": "W8",
+      "formula": "=SORT(\nUNIQUE(\nFILTER(\nUPPER('Sales Database'!C6:C1996),\n'Sales Database'!C6:C1996<>\"\",\nBYROW(\nUPPER('Sales Database'!C6:C1996),\nLAMBDA(x,\nSUMIF(UPPER('Sales Database'!C6:C1996),x,'Sales Database'!O6:O1996)\n-\nSUMIF(UPPER('Sales Database'!C6:C1996),x,'Sal\"&\"es Database'!S6:S1996)\n>0\n)\n)\n)\n),\n1,TRUE)\"),\"NAME",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Y8",
+      "formula": "=IF($W8=\"\",\"-\",LET(\ncustomer,UPPER(TRIM($W8)),\ninvoices,UNIQUE(FILTER('Sales Database'!$A$6:$A1996,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer,'Sales Database'!$A$6:$A1996<>\"\")),\nbalances,MAP(invoices,LAMBDA(inv,\nIFERROR(MAX(FILTER('Sales Data\"&\"base'!$O$6:$O1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer)),0)\n-\nIFERROR(SUM(FILTER('Sales Database'!$S$6:$S1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer)),0)\n)),\ndueDa\"&\"tes,MAP(invoices,LAMBDA(inv,\nIFERROR(MIN(FILTER('Sales Database'!$Q$6:$Q1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer,'Sales Database'!$Q$6:$Q1996<>\"\")),\"\")\n)),\nIFERROR(MIN(FILTER(dueDates,balances>0,dueDates\"&\"<>\"\")),\"Paid\")\n))",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "Z8",
+      "formula": "=IF(OR(Y8=\"\",Y8=\"-\"),\"-\",MAX(0,$W$6-Y8))",
+      "occurrences": 1989
+    },
+    {
+      "example_cell": "AB8",
+      "formula": "=FILTER(W8:Z1996,(Y8:Y1996<=$W$6)*(W8:W1996<>\"\"))\"),\"NAME",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "H9",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"Item 2",
+      "occurrences": 3
+    },
+    {
+      "example_cell": "W9",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"NAME 2",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "W10",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"NAME 3",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "Y10",
+      "formula": "=IF($W10=\"\",\"-\",LET(\ncustomer,UPPER(TRIM($W10)),\ninvoices,UNIQUE(FILTER('Sales Database'!$A$6:$A1996,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer,'Sales Database'!$A$6:$A1996<>\"\")),\nbalances,MAP(invoices,LAMBDA(inv,\nIFERROR(MAX(FILTER('Sales Da\"&\"tabase'!$O$6:$O1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer)),0)\n-\nIFERROR(SUM(FILTER('Sales Database'!$S$6:$S1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer)),0)\n)),\ndue\"&\"Dates,MAP(invoices,LAMBDA(inv,\nIFERROR(MIN(FILTER('Sales Database'!$Q$6:$Q1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer,'Sales Database'!$Q$6:$Q1996<>\"\")),\"\")\n)),\nIFERROR(MIN(FILTER(dueDates,balances>0,dueDat\"&\"es<>\"\")),\"Paid\")\n))",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "H12",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"Item 4",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "Y12",
+      "formula": "=IF($W12=\"\",\"-\",LET(\ncustomer,UPPER(TRIM($W12)),\ninvoices,UNIQUE(FILTER('Sales Database'!$A$6:$A1996,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer,'Sales Database'!$A$6:$A1996<>\"\")),\nbalances,MAP(invoices,LAMBDA(inv,\nIFERROR(MAX(FILTER('Sales Da\"&\"tabase'!$O$6:$O1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer)),0)\n-\nIFERROR(SUM(FILTER('Sales Database'!$S$6:$S1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer)),0)\n)),\ndue\"&\"Dates,MAP(invoices,LAMBDA(inv,\nIFERROR(MIN(FILTER('Sales Database'!$Q$6:$Q1996,'Sales Database'!$A$6:$A1996=inv,UPPER(TRIM('Sales Database'!$C$6:$C1996))=customer,'Sales Database'!$Q$6:$Q1996<>\"\")),\"\")\n)),\nIFERROR(MIN(FILTER(dueDates,balances>0,dueDat\"&\"es<>\"\")),\"Paid\")\n))\"),\"-",
+      "occurrences": 6
+    }
+  ],
+  "Financial Allocation": [
+    {
+      "example_cell": "K8",
+      "formula": "=SUM(K10:L27)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "M8",
+      "formula": "=SUM(M10:N27)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "I10",
+      "formula": "=Setup!J53",
+      "occurrences": 18
+    },
+    {
+      "example_cell": "K10",
+      "formula": "=IF(LEN(TRIM(I10))=0,\"-\",IFERROR(INDEX(SORT(FILTER({ROW($D$7:$D8000),$F$7:$F8000},LOWER(TRIM(TO_TEXT($D$7:$D8000)))=LOWER(TRIM(TO_TEXT(I10))),$F$7:$F8000<>\"\"),1,FALSE),1,2),\"-\"))",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "M10",
+      "formula": "=IF(OR(K10=\"\",K10=\"-\"),\"-\",$K$3*K10)",
+      "occurrences": 18
+    },
+    {
+      "example_cell": "K12",
+      "formula": "=IF(LEN(TRIM(I12))=0,\"-\",IFERROR(INDEX(SORT(FILTER({ROW($D$7:$D8000),$F$7:$F8000},LOWER(TRIM(TO_TEXT($D$7:$D8000)))=LOWER(TRIM(TO_TEXT(I12))),$F$7:$F8000<>\"\"),1,FALSE),1,2),\"-\"))\"),\"-",
+      "occurrences": 16
+    }
+  ],
+  "Sales Rep Comms": [
+    {
+      "example_cell": "G8",
+      "formula": "=sum(G12:G8005)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B12",
+      "formula": "=FILTER(\n{'Sales Database'!B6:B8005,'Sales Database'!A6:A8005,'Sales Database'!H6:H8005,'Sales Database'!J6:J8005,'Sales Database'!K6:K8005,'Sales Database'!O6:O8005},\nUPPER(TRIM('Sales Database'!P6:P8005))=UPPER(TRIM($B$6)),\n'Sales Database'!B6:B8005>=$C$\"&\"8,\n'Sales Database'!B6:B8005<=$C$9\n)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "C12",
+      "formula": "=\"COMPUTED_VALUE\"",
+      "occurrences": 42
+    },
+    {
+      "example_cell": "D12",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  Item 1",
+      "occurrences": 6
+    },
+    {
+      "example_cell": "D13",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  Item 2",
+      "occurrences": 4
+    },
+    {
+      "example_cell": "D14",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  Item 4",
+      "occurrences": 4
+    },
+    {
+      "example_cell": "D15",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  Item 5",
+      "occurrences": 1
+    }
+  ],
+  "Vendors": [],
+  "Inventory": [
+    {
+      "example_cell": "G9",
+      "formula": "=IF(B9=\"\",\"\",SUM(\nF9,\nSUMIFS('Sold Items'!$H$7:$H1008,'Sold Items'!$E$7:$E1008,$B9,'Sold Items'!$M$7:$M1008,\"<>\"&\"*\"&Setup!$J$23&\"*\"),\nIFERROR(SUMIFS('Manual Inventory'!$F$7:$F1008,'Manual Inventory'!$D$7:$D1008,$B9),0)\n-SUMIFS('Sales Database'!$I$6:$I1008,'Sales Database'!$H$6:$H1008,$B9)\n))",
+      "occurrences": 1000
+    },
+    {
+      "example_cell": "I9",
+      "formula": "=IF(G9=\"\",\"\",IF(G9=0,\"Out of Stock\",IF(G9<=H9,\"Low Stock\",\"In Stock\")))",
+      "occurrences": 1000
+    },
+    {
+      "example_cell": "L9",
+      "formula": "=IFERROR(IF(J9=\"\",\"\",J9-K9),\"\")",
+      "occurrences": 1000
+    },
+    {
+      "example_cell": "M9",
+      "formula": "=IFERROR((J9-K9)/K9,\"\")",
+      "occurrences": 1000
+    },
+    {
+      "example_cell": "O9",
+      "formula": "=IF(B9=\"\",\"\", SUMIFS('Sold Items'!$I$7:$I1008,'Sold Items'!$E$7:$E1008,B9))",
+      "occurrences": 1000
+    }
+  ],
+  "Sold Items": [
+    {
+      "example_cell": "I7",
+      "formula": "=IF(G7=\"\",\"\",G7-H7)",
+      "occurrences": 3495
+    },
+    {
+      "example_cell": "K7",
+      "formula": "=IF(G7=\"\",\"\",G7*J7)",
+      "occurrences": 3495
+    },
+    {
+      "example_cell": "O7",
+      "formula": "=IF(OR(B7=\"\",C7=\"\"),\"\", DATEDIF(B7,C7,\"d\"))",
+      "occurrences": 3495
+    }
+  ],
+  "Expenses": [
+    {
+      "example_cell": "I7",
+      "formula": "=E7-F7+G7+H7",
+      "occurrences": 7994
+    }
+  ],
+  "Manual Inventory": [],
+  "Bill of Materials": [
+    {
+      "example_cell": "C19",
+      "formula": "=C11",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "C20",
+      "formula": "=IFERROR(INDEX($I$8:WI17,ROW(I8:I17)+2,MATCH($C$11,$I$8:WI$8,0)),\"\")",
+      "occurrences": 80
+    },
+    {
+      "example_cell": "E20",
+      "formula": "=IFERROR(IF(INDEX($I$8:WI17,ROW(I8:I17)+2,MATCH($C$11,$I$8:WI$8,0)+2)=0,\"\",IF($C$14=\"\", -INDEX($I$8:WI17,ROW(I8:I17)+2,MATCH($C$11,$I$8:WI$8,0)+2),-INDEX($I$8:WI17,ROW(I8:I17)+2,MATCH($C$11,$I$8:WI$8,0)+2)*$C$14)),\"\")",
+      "occurrences": 80
+    },
+    {
+      "example_cell": "K97",
+      "formula": "=SUM(K17:L96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Q97",
+      "formula": "=SUM(Q17:R96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "W97",
+      "formula": "=SUM(W17:X96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AC97",
+      "formula": "=SUM(AC17:AD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AI97",
+      "formula": "=SUM(AI17:AJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AO97",
+      "formula": "=SUM(AO17:AP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AU97",
+      "formula": "=SUM(AU17:AV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA97",
+      "formula": "=SUM(BA17:BB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BG97",
+      "formula": "=SUM(BG17:BH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BM97",
+      "formula": "=SUM(BM17:BN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BS97",
+      "formula": "=SUM(BS17:BT96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BY97",
+      "formula": "=SUM(BY17:BZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "CE97",
+      "formula": "=SUM(CE17:CF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "CK97",
+      "formula": "=SUM(CK17:CL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "CQ97",
+      "formula": "=SUM(CQ17:CR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "CW97",
+      "formula": "=SUM(CW17:CX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "DC97",
+      "formula": "=SUM(DC17:DD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "DI97",
+      "formula": "=SUM(DI17:DJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "DO97",
+      "formula": "=SUM(DO17:DP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "DU97",
+      "formula": "=SUM(DU17:DV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "EA97",
+      "formula": "=SUM(EA17:EB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "EG97",
+      "formula": "=SUM(EG17:EH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "EM97",
+      "formula": "=SUM(EM17:EN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "ES97",
+      "formula": "=SUM(ES17:ET96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "EY97",
+      "formula": "=SUM(EY17:EZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "FE97",
+      "formula": "=SUM(FE17:FF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "FK97",
+      "formula": "=SUM(FK17:FL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "FQ97",
+      "formula": "=SUM(FQ17:FR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "FW97",
+      "formula": "=SUM(FW17:FX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "GC97",
+      "formula": "=SUM(GC17:GD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "GI97",
+      "formula": "=SUM(GI17:GJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "GO97",
+      "formula": "=SUM(GO17:GP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "GU97",
+      "formula": "=SUM(GU17:GV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "HA97",
+      "formula": "=SUM(HA17:HB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "HG97",
+      "formula": "=SUM(HG17:HH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "HM97",
+      "formula": "=SUM(HM17:HN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "HS97",
+      "formula": "=SUM(HS17:HT96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "HY97",
+      "formula": "=SUM(HY17:HZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "IE97",
+      "formula": "=SUM(IE17:IF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "IK97",
+      "formula": "=SUM(IK17:IL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "IQ97",
+      "formula": "=SUM(IQ17:IR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "IW97",
+      "formula": "=SUM(IW17:IX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "JC97",
+      "formula": "=SUM(JC17:JD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "JI97",
+      "formula": "=SUM(JI17:JJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "JO97",
+      "formula": "=SUM(JO17:JP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "JU97",
+      "formula": "=SUM(JU17:JV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "KA97",
+      "formula": "=SUM(KA17:KB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "KG97",
+      "formula": "=SUM(KG17:KH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "KM97",
+      "formula": "=SUM(KM17:KN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "KS97",
+      "formula": "=SUM(KS17:KT96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "KY97",
+      "formula": "=SUM(KY17:KZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "LE97",
+      "formula": "=SUM(LE17:LF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "LK97",
+      "formula": "=SUM(LK17:LL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "LQ97",
+      "formula": "=SUM(LQ17:LR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "LW97",
+      "formula": "=SUM(LW17:LX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "MC97",
+      "formula": "=SUM(MC17:MD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "MI97",
+      "formula": "=SUM(MI17:MJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "MO97",
+      "formula": "=SUM(MO17:MP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "MU97",
+      "formula": "=SUM(MU17:MV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "NA97",
+      "formula": "=SUM(NA17:NB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "NG97",
+      "formula": "=SUM(NG17:NH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "NM97",
+      "formula": "=SUM(NM17:NN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "NS97",
+      "formula": "=SUM(NS17:NT96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "NY97",
+      "formula": "=SUM(NY17:NZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "OE97",
+      "formula": "=SUM(OE17:OF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "OK97",
+      "formula": "=SUM(OK17:OL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "OQ97",
+      "formula": "=SUM(OQ17:OR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "OW97",
+      "formula": "=SUM(OW17:OX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "PC97",
+      "formula": "=SUM(PC17:PD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "PI97",
+      "formula": "=SUM(PI17:PJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "PO97",
+      "formula": "=SUM(PO17:PP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "PU97",
+      "formula": "=SUM(PU17:PV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "QA97",
+      "formula": "=SUM(QA17:QB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "QG97",
+      "formula": "=SUM(QG17:QH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "QM97",
+      "formula": "=SUM(QM17:QN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "QS97",
+      "formula": "=SUM(QS17:QT96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "QY97",
+      "formula": "=SUM(QY17:QZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "RE97",
+      "formula": "=SUM(RE17:RF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "RK97",
+      "formula": "=SUM(RK17:RL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "RQ97",
+      "formula": "=SUM(RQ17:RR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "RW97",
+      "formula": "=SUM(RW17:RX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "SC97",
+      "formula": "=SUM(SC17:SD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "SI97",
+      "formula": "=SUM(SI17:SJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "SO97",
+      "formula": "=SUM(SO17:SP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "SU97",
+      "formula": "=SUM(SU17:SV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "TA97",
+      "formula": "=SUM(TA17:TB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "TG97",
+      "formula": "=SUM(TG17:TH96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "TM97",
+      "formula": "=SUM(TM17:TN96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "TS97",
+      "formula": "=SUM(TS17:TT96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "TY97",
+      "formula": "=SUM(TY17:TZ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "UE97",
+      "formula": "=SUM(UE17:UF96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "UK97",
+      "formula": "=SUM(UK17:UL96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "UQ97",
+      "formula": "=SUM(UQ17:UR96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "UW97",
+      "formula": "=SUM(UW17:UX96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "VC97",
+      "formula": "=SUM(VC17:VD96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "VI97",
+      "formula": "=SUM(VI17:VJ96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "VO97",
+      "formula": "=SUM(VO17:VP96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "VU97",
+      "formula": "=SUM(VU17:VV96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "WA97",
+      "formula": "=SUM(WA17:WB96)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "WG97",
+      "formula": "=SUM(WG17:WH96)",
+      "occurrences": 1
+    }
+  ],
+  "Balance": [],
+  "Accounts": [
+    {
+      "example_cell": "B8",
+      "formula": "=D55",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B15",
+      "formula": "=Setup!B16",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "C15",
+      "formula": "=Setup!$C$9",
+      "occurrences": 205
+    },
+    {
+      "example_cell": "D15",
+      "formula": "=SUM(F15,H15,L15)-J15",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "H15",
+      "formula": "=SUMIFS('Sales Database'!$S$6:$S59,'Sales Database'!$G$6:$G59,$B15)",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "J15",
+      "formula": "=SUMIFS(Expenses!$I$7:$I59, Expenses!$J$7:$J59, B15) + SUMIFS('Sold Items'!$K$7:$K59, 'Sold Items'!$L$7:$L59, B15)\n",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "L15",
+      "formula": "=SUMIFS(Balance!$E$7:$E59,Balance!$D$7:$D59,B15)",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "D55",
+      "formula": "=SUM(D15:D54)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F55",
+      "formula": "=SUM(F15:F54)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "H55",
+      "formula": "=SUM(H15:H54)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "J55",
+      "formula": "=SUM(J15:J54)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "L55",
+      "formula": "=SUM(L15:L54)",
+      "occurrences": 1
+    }
+  ],
+  "Inventory Dashboard": [
+    {
+      "example_cell": "B5",
+      "formula": "=IF(B3=\"J A N U A R Y\",\"JAN\",IF(B3=\"F E B R U A R Y\",\"FEB\",IF(B3=\"M A R C H\",\"MAR\",IF(B3=\"A P R I L\",\"APR\",IF(B3=\"M A Y\",\"MAY\",IF(B3=\"J U N E\",\"JUN\",IF(B3=\"J U L Y\",\"JUL\",IF(B3=\"A U G U S T\",\"AUG\",IF(B3=\"S E P T E M B E R\",\"SEP\",IF(B3=\"O C T O B E R\",\"OCT\",IF(B3=\"N O V E M B E R\",\"NOV\",IF(B3=\"D E C E M B E R\",\"DEC\",\"\"))))))))))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD7",
+      "formula": "=UPPER(TEXT(AD8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AE7",
+      "formula": "=UPPER(TEXT(AE8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF7",
+      "formula": "=UPPER(TEXT(AF8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG7",
+      "formula": "=UPPER(TEXT(AG8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH7",
+      "formula": "=UPPER(TEXT(AH8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AI7",
+      "formula": "=UPPER(TEXT(AI8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AJ7",
+      "formula": "=UPPER(TEXT(AJ8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AK7",
+      "formula": "=UPPER(TEXT(AK8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AL7",
+      "formula": "=UPPER(TEXT(AL8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AM7",
+      "formula": "=UPPER(TEXT(AM8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AN7",
+      "formula": "=UPPER(TEXT(AN8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AO7",
+      "formula": "=UPPER(TEXT(AO8,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B8",
+      "formula": "=COUNTIF(Inventory!$E$9:$E1045,\"Product\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "G8",
+      "formula": "=COUNTIF(Inventory!$E$9:$E1045,\"Material\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P8",
+      "formula": "=SUM(Inventory!G9:G1045)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "W8",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!J23&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD8",
+      "formula": "=DATE(R36,1,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AE8",
+      "formula": "=EDATE(AD8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF8",
+      "formula": "=EDATE(AE8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG8",
+      "formula": "=EDATE(AF8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH8",
+      "formula": "=EDATE(AG8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AI8",
+      "formula": "=EDATE(AH8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AJ8",
+      "formula": "=EDATE(AI8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AK8",
+      "formula": "=EDATE(AJ8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AL8",
+      "formula": "=EDATE(AK8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AM8",
+      "formula": "=EDATE(AL8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AN8",
+      "formula": "=EDATE(AM8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AO8",
+      "formula": "=EDATE(AN8,1)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD9",
+      "formula": "=DAY(EOMONTH(AD8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AE9",
+      "formula": "=DAY(EOMONTH(AE8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF9",
+      "formula": "=DAY(EOMONTH(AF8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG9",
+      "formula": "=DAY(EOMONTH(AG8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH9",
+      "formula": "=DAY(EOMONTH(AH8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AI9",
+      "formula": "=DAY(EOMONTH(AI8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AJ9",
+      "formula": "=DAY(EOMONTH(AJ8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AK9",
+      "formula": "=DAY(EOMONTH(AK8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AL9",
+      "formula": "=DAY(EOMONTH(AL8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AM9",
+      "formula": "=DAY(EOMONTH(AM8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AN9",
+      "formula": "=DAY(EOMONTH(AN8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AO9",
+      "formula": "=DAY(EOMONTH(AO8,0))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AC12",
+      "formula": "=P8",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AC13",
+      "formula": "=W8",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N19",
+      "formula": "=IF(N14=N15,IF(N16<>\"ALL\",SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$D$7:$D1045,$N$16,Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\"),SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\")),IF(N16<>\"ALL\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$B$7:$B1045,\"<=\"&DATE(YEAR($N$15),MONTH($N$15),DAY($N$15)),Sales!$D$7:$D1045,$N$16,Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\"),SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$B$7:$B1045,\"<=\"&DATE(YEAR($N$15),MONTH($N$15),DAY($N$15)),Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\")))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Q19",
+      "formula": "=IF(N14=N15,IF(N16<>\"ALL\",COUNTIFS(Sales!$B$7:$B1045,\"=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$D$7:$D1045,$N$16,Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\"),COUNTIFS(Sales!$B$7:$B1045,\"=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\")),IF(N16<>\"ALL\", COUNTIFS(Sales!$B$7:$B1045,\">=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$B$7:$B1045,\"<=\"&DATE(YEAR($N$15),MONTH($N$15),DAY($N$15)),Sales!$D$7:$D1045,$N$16,Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\"),COUNTIFS(Sales!$B$7:$B1045,\">=\"&DATE(YEAR($N$14),MONTH($N$14),DAY($N$14)),Sales!$B$7:$B1045,\"<=\"&DATE(YEAR($N$15),MONTH($N$15),DAY($N$15)),Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!K23&\"*\")))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD23",
+      "formula": "=AD7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AE23",
+      "formula": "=AE7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AF23",
+      "formula": "=AF7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AG23",
+      "formula": "=AG7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AH23",
+      "formula": "=AH7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AI23",
+      "formula": "=AI7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AJ23",
+      "formula": "=AJ7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AK23",
+      "formula": "=AK7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AL23",
+      "formula": "=AL7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AM23",
+      "formula": "=AM7",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AN23",
+      "formula": "=AN7",
+      "occurrences": 21
+    },
+    {
+      "example_cell": "AO23",
+      "formula": "=AO7",
+      "occurrences": 22
+    },
+    {
+      "example_cell": "AD24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AD22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AD22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AE24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AE22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AE22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AF22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AF22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AG22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AG22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AH22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AH22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AI24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AI22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AI22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AJ24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AJ22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AJ22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AK24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AK22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AK22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AL24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AL22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AL22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AM24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AM22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AM22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AN24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AN22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AN22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AO24",
+      "formula": "=SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\">=\"&DATE($R$24,AO22,1),Sales!$B$7:$B1045,\"<=\"&EOMONTH(DATE($R$24,AO22,1),0),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AQ24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AQ22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AQ22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AR24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AR22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AR22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AS24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AS22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AS22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AT24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AT22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AT22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AU24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AU22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AU22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AV24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AV22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AV22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AW24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AW22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AW22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AX24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AX22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AX22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AY24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AY22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AY22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AZ24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,AZ22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,AZ22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,BA22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,BA22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BB24",
+      "formula": "=SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE($W$65,BB22,1),'Sold Items'!$B$7:$B1045,\"<=\"&EOMONTH(DATE($W$65,BB22,1),0),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AE27",
+      "formula": "=IF(AE26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AE26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF27",
+      "formula": "=IF(AF26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AF26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG27",
+      "formula": "=IF(AG26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AG26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH27",
+      "formula": "=IF(AH26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AH26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AI27",
+      "formula": "=IF(AI26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AI26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AJ27",
+      "formula": "=IF(AJ26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AJ26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AK27",
+      "formula": "=IF(AK26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AK26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AL27",
+      "formula": "=IF(AL26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AL26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AM27",
+      "formula": "=IF(AM26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AM26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AN27",
+      "formula": "=IF(AN26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AN26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AO27",
+      "formula": "=IF(AO26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AO26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AP27",
+      "formula": "=IF(AP26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AP26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AQ27",
+      "formula": "=IF(AQ26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AQ26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AR27",
+      "formula": "=IF(AR26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AR26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AS27",
+      "formula": "=IF(AS26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AS26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AT27",
+      "formula": "=IF(AT26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AT26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AU27",
+      "formula": "=IF(AU26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AU26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AV27",
+      "formula": "=IF(AV26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AV26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AW27",
+      "formula": "=IF(AW26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AW26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AX27",
+      "formula": "=IF(AX26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AX26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AY27",
+      "formula": "=IF(AY26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AY26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AZ27",
+      "formula": "=IF(AZ26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),AZ26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA27",
+      "formula": "=IF(BA26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BA26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BB27",
+      "formula": "=IF(BB26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BB26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BC27",
+      "formula": "=IF(BC26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BC26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BD27",
+      "formula": "=IF(BD26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BD26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BE27",
+      "formula": "=IF(BE26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BE26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BF27",
+      "formula": "=IF(BF26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BF26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BG27",
+      "formula": "=IF(BG26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BG26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BH27",
+      "formula": "=IF(BH26=\"\",\"\", SUMIFS(Sales!$F$7:$F1045,Sales!$B$7:$B1045,\"=\"&DATE($R$36,INDEX($AD$7:$AO$22,5,MATCH($R$35,$AD$7:$AO$7,0)),BH26),Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F29",
+      "formula": "=IFERROR(AF32/SUM(AF30:AF32),0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AF30",
+      "formula": "=COUNTIF(Inventory!$I$9:$I1045,AD30)",
+      "occurrences": 3
+    },
+    {
+      "example_cell": "C31",
+      "formula": "=IF(F29=0,\"\u2713 All items in stock\",IF(AF32=1,\"Total: 1 item\",\"Total: \"&AF32&\" items\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "C32",
+      "formula": "=F29",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "D32",
+      "formula": "=1-C32",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AD35",
+      "formula": "=Setup!K16",
+      "occurrences": 36
+    },
+    {
+      "example_cell": "AE35",
+      "formula": "=IF(COUNTIF(Sales!$P$6:$P1045,AD35)=0,\"\",COUNTIF(Sales!$P$6:$P1045,AD35))",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "AG35",
+      "formula": "=IF(D36=TRUE, FILTER(AD35:AE64, REGEXMATCH(AD35:AD64, IF(Setup!K19=\"\",Setup!K19,Setup!K19))=FALSE),FILTER($AD$35:$AE$64,$AD$35:$AD$64<>\"\"))\"),\"  \ud83d\udce5 To Pack",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AH35",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"#REF!",
+      "occurrences": 9
+    },
+    {
+      "example_cell": "AK35",
+      "formula": "=IF(AJ35<>\"\",SUMIFS(Sales!$F$7:$F1045,Sales!$D$7:$D1045,AJ35,Sales!$P$7:$P1045,\"<>\"&\"*\"&Setup!$K$23&\"*\"),\"\")",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "AN35",
+      "formula": "=SORT(FILTER(AJ35:AK1045,AJ35:AJ1045<>\"\"),2,FALSE)\"),\"#N/A",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AP35",
+      "formula": "=IFERROR(IF(AN35<>\"\",AO35/$AK$1045,\"\"),\"\")",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "AR35",
+      "formula": "=IFERROR(IF(AQ35<>\"\",AVERAGEIFS('Sold Items'!$O$7:$O1045,'Sold Items'!$N$7:$N1045,AQ35,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!$J$23&\"*\"),\"\"),\"\")",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "AU35",
+      "formula": "=SORT(FILTER(AQ35:AR1045,AQ35:AQ1045<>\"\"),2,TRUE)\"),\"#N/A",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AX35",
+      "formula": "=Setup!J16",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "AY35",
+      "formula": "=IF(COUNTIF('Sold Items'!$M$6:$M1045,AX35)=0,\"\",COUNTIF('Sold Items'!$M$6:$M1045,AX35))",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "BA35",
+      "formula": "=IF(S77=TRUE, FILTER(AX35:AY64, REGEXMATCH(AX35:AX64, IF(Setup!J19=\"\",Setup!J19,Setup!J19))=FALSE),FILTER($AX$35:$AY$64,$AX$35:$AX$64<>\"\"))\"),\"  \ud83d\udd04 Processing",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BB35",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"",
+      "occurrences": 8
+    },
+    {
+      "example_cell": "BE35",
+      "formula": "=IF(BD35<>\"\",SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$N$7:$N1045,BD35,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!$J$23&\"*\"),\"\")",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "BH35",
+      "formula": "=SORT(FILTER(BD35:BE1045,BD35:BD1045<>\"\"),2,FALSE)\"),\"#N/A",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG36",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \ud83d\udce6 Ready to Ship",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA36",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \ud83d\ude9a Shipped",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "W37",
+      "formula": "=IFERROR(AN35,\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB37",
+      "formula": "=AP35",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "BA37",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \ud83d\udccd For Pickup",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG38",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u2705 Delivered",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA38",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u2705 Received",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG39",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u274c Canceled",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AG40",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u270b On Hold",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "AG41",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u2753 Lost",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA41",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u2753 Incomplete",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG42",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u21a9\ufe0f Returned to Inventory",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "BA42",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \u21a9\ufe0f Returned to Vendor",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AG43",
+      "formula": "=\"COMPUTED_VALUE\"\"),\"  \ud83d\uddd1\ufe0f Discarded after Return",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AK55",
+      "formula": "=IF(AJ55<>\"\",SUMIFS(Sales!$F$7:$F1045,Sales!$D$7:$D1045,AJ55,Sales!$P$7:$P1045,\"<>\"&\"*\"&'Inventory Setup'!$A$19&\"*\"),\"\")",
+      "occurrences": 991
+    },
+    {
+      "example_cell": "AR55",
+      "formula": "=IFERROR(IF(AQ55<>\"\",AVERAGEIFS('Sold Items'!$O$7:$O1045,'Sold Items'!$N$7:$N1045,AQ55,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\"),\"\"),\"\")",
+      "occurrences": 990
+    },
+    {
+      "example_cell": "BE55",
+      "formula": "=IF(BD55<>\"\",SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$N$7:$N1045,BD55,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&'Inventory Setup'!$A$18&\"*\"),\"\")",
+      "occurrences": 991
+    },
+    {
+      "example_cell": "E78",
+      "formula": "=IFERROR(AU35,\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "M78",
+      "formula": "=AV35",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "E79",
+      "formula": "=AU36",
+      "occurrences": 19
+    },
+    {
+      "example_cell": "E102",
+      "formula": "=IFERROR(BH35,\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "M102",
+      "formula": "=BI35",
+      "occurrences": 20
+    },
+    {
+      "example_cell": "E103",
+      "formula": "=BH36",
+      "occurrences": 19
+    },
+    {
+      "example_cell": "R114",
+      "formula": "=IF(T102=T103,IF(R106<>\"ALL\",SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$E$7:$E1045,$R$106,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")),IF(R106<>\"ALL\", SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($T$103),MONTH($T$103),DAY($T$103)),'Sold Items'!$E$7:$E1045,$R$106,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($T$103),MONTH($T$103),DAY($T$103)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "R118",
+      "formula": "=IF(T102=T103,IF(R106<>\"ALL\", SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$E$7:$E1045,$R$106,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")),IF(R106<>\"ALL\", SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($T$103),MONTH($T$103),DAY($T$103)),'Sold Items'!$E$7:$E1045,$R$106,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($T$102),MONTH($T$102),DAY($T$102)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($T$103),MONTH($T$103),DAY($T$103)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P128",
+      "formula": "=IF(K126=K127,IF(F130<>\"ALL\", SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$N$7:$N1045,$F$130,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")),IF(F130<>\"ALL\", SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($K$127),MONTH($K$127),DAY($K$127)),'Sold Items'!$N$7:$N1045,$F$130,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$G$7:$G1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($K$127),MONTH($K$127),DAY($K$127)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "S128",
+      "formula": "=IF(K126=K127,IF(F130<>\"ALL\", SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$N$7:$N1045,$F$130,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\"=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")),IF(F130<>\"ALL\", SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($K$127),MONTH($K$127),DAY($K$127)),'Sold Items'!$N$7:$N1045,$F$130,'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\"),SUMIFS('Sold Items'!$K$7:$K1045,'Sold Items'!$B$7:$B1045,\">=\"&DATE(YEAR($K$126),MONTH($K$126),DAY($K$126)),'Sold Items'!$B$7:$B1045,\"<=\"&DATE(YEAR($K$127),MONTH($K$127),DAY($K$127)),'Sold Items'!$M$7:$M1045,\"<>\"&\"*\"&Setup!K8&\"*\")))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B141",
+      "formula": "=Setup!G16",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "F141",
+      "formula": "=Setup!H16",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "I141",
+      "formula": "=IF(B141<>\"\",SUMIFS(Inventory!$G$9:$G1045,Inventory!$D$9:$D1045,B141),\"\")",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "L141",
+      "formula": "=IF($B141<>\"\",COUNTIFS(Inventory!$D$9:$D1045,$B141,Inventory!$I$9:$I1045,L$140),\"\")",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "N141",
+      "formula": "=IF($B141<>\"\",COUNTIFS(Inventory!$D$9:$D1045,$B141,Inventory!$I$9:$I1045,N$140),\"\")",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "Q141",
+      "formula": "=IF($B141<>\"\",COUNTIFS(Inventory!$D$9:$D1045,$B141,Inventory!$I$9:$I1045,Q$140),\"\")",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "S141",
+      "formula": "=IF(B141<>\"\",SUM(L141:R141),\"\")",
+      "occurrences": 30
+    },
+    {
+      "example_cell": "I171",
+      "formula": "=SUM(I141:K170)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "L171",
+      "formula": "=SUM(L141:M170)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N171",
+      "formula": "=SUM(N141:P170)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Q171",
+      "formula": "=SUM(Q141:R170)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "S171",
+      "formula": "=SUM(S141:U170)",
+      "occurrences": 1
+    }
+  ],
+  "Custom Bookkeeping Dashboard": [
+    {
+      "example_cell": "B6",
+      "formula": "=IF(B3=\"J A N U A R Y\",\"JAN\",IF(B3=\"F E B R U A R Y\",\"FEB\",IF(B3=\"M A R C H\",\"MAR\",IF(B3=\"A P R I L\",\"APR\",IF(B3=\"M A Y\",\"MAY\",IF(B3=\"J U N E\",\"JUN\",IF(B3=\"J U L Y\",\"JUL\",IF(B3=\"A U G U S T\",\"AUG\",IF(B3=\"S E P T E M B E R\",\"SEP\",IF(B3=\"O C T O B E R\",\"OCT\",IF(B3=\"N O V E M B E R\",\"NOV\",IF(B3=\"D E C E M B E R\",\"DEC\",\"\"))))))))))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "G6",
+      "formula": "=G22",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "L6",
+      "formula": "=O22",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P6",
+      "formula": "=G6-L6",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N13",
+      "formula": "=IF(O16=0,0, IF(O16<0,CONCATENATE(\"\u25bc  \",TEXT(O16*-1,\"0.00%\")),CONCATENATE(\"\u25b2  \",TEXT(O16,\"0.00%\"))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "O16",
+      "formula": "=IFERROR(P6/G6,0)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F22",
+      "formula": "=Setup!$C$9",
+      "occurrences": 210
+    },
+    {
+      "example_cell": "G22",
+      "formula": "=sum(G23:G62)",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "O22",
+      "formula": "=sum(O23:O62)",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "Q22",
+      "formula": "=sum(Q23:Q62)",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "S22",
+      "formula": "=O22+Q22",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B23",
+      "formula": "='Data (Hidden)'!H2",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "G23",
+      "formula": "=IF($D$7=$D$8,\nSUMIFS('Sales Database'!$J$6:$J67,'Sales Database'!$B$6:$B67,\"=\"&DATE(YEAR($D$7),MONTH($D$7),DAY($D$7)),'Sales Database'!$H$6:$H67,$B23),\nSUMIFS('Sales Database'!$J$6:$J67,'Sales Database'!$B$6:$B67,\">=\"&DATE(YEAR($D$7),MONTH($D$7),DAY($D$7)),'Sales Database'!$B$6:$B67,\"<=\"&DATE(YEAR($D$8),MONTH($D$8),DAY($D$8)),'Sales Database'!$H$6:$H67,$B23))",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "I23",
+      "formula": "=SUM(F23:G23)",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "K23",
+      "formula": "=Setup!D16",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "O23",
+      "formula": "=ABS(IF($D$7=$D$8,SUMIFS(Expenses!$I$7:$I67,Expenses!$B$7:$B67,\"=\"&DATE(YEAR($D$7),MONTH($D$7),DAY($D$7)),Expenses!$D$7:$D67,$K23),SUMIFS(Expenses!$I$7:$I67,Expenses!$B$7:$B67,\">=\"&DATE(YEAR($D$7),MONTH($D$7),DAY($D$7)),Expenses!$B$7:$B67,\"<=\"&DATE(YEAR($D$8),MONTH($D$8),DAY($D$8)),Expenses!$D$7:$D67,$K23)))",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "Q23",
+      "formula": "=ABS(IF($D$7=$D$8,SUMIFS(Expenses!$F$7:$F67,Expenses!$B$7:$B67,\"=\"&DATE(YEAR($D$7),MONTH($D$7),DAY($D$7)),Expenses!$D$7:$D67,$K23),SUMIFS(Expenses!$F$7:$F67,Expenses!$B$7:$B67,\">=\"&DATE(YEAR($D$7),MONTH($D$7),DAY($D$7)),Expenses!$B$7:$B67,\"<=\"&DATE(YEAR($D$8),MONTH($D$8),DAY($D$8)),Expenses!$D$7:$D67,$K23)))",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "S23",
+      "formula": "=SUM(N23:Q23)",
+      "occurrences": 40
+    },
+    {
+      "example_cell": "I63",
+      "formula": "=SUM(I23:I62)",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "S63",
+      "formula": "=SUM(S23:S62)",
+      "occurrences": 1
+    }
+  ],
+  "Sales Tax": [
+    {
+      "example_cell": "T4",
+      "formula": "=IF(MONTH(DATEVALUE(Setup!K8&\"1\"))<>1,\"FOR FISCAL YEAR\",\"FOR CALENDAR YEAR\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "B8",
+      "formula": "=AB25",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "T8",
+      "formula": "=B8-J8",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "C21",
+      "formula": "=IFERROR(DATE(IF(MONTH(DATEVALUE(Setup!K8&\"1\"))<>1,$Y$4-1,$Y$4),MONTH(DATEVALUE(Setup!K8 & \"1\")),1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "D21",
+      "formula": "=IFERROR(EOMONTH(C21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "E21",
+      "formula": "=IFERROR(EDATE(C21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F21",
+      "formula": "=IFERROR(EOMONTH(E21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "G21",
+      "formula": "=IFERROR(EDATE(E21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "H21",
+      "formula": "=IFERROR(EOMONTH(G21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "I21",
+      "formula": "=IFERROR(EDATE(G21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "J21",
+      "formula": "=IFERROR(EOMONTH(I21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "K21",
+      "formula": "=IFERROR(EDATE(I21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "L21",
+      "formula": "=IFERROR(EOMONTH(K21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "M21",
+      "formula": "=IFERROR(EDATE(K21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N21",
+      "formula": "=IFERROR(EOMONTH(M21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "O21",
+      "formula": "=IFERROR(EDATE(M21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P21",
+      "formula": "=IFERROR(EOMONTH(O21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Q21",
+      "formula": "=IFERROR(EDATE(O21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "R21",
+      "formula": "=IFERROR(EOMONTH(Q21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "S21",
+      "formula": "=IFERROR(EDATE(Q21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "T21",
+      "formula": "=IFERROR(EOMONTH(S21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "U21",
+      "formula": "=IFERROR(EDATE(S21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "V21",
+      "formula": "=IFERROR(EOMONTH(U21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "W21",
+      "formula": "=IFERROR(EDATE(U21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "X21",
+      "formula": "=IFERROR(EOMONTH(W21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Y21",
+      "formula": "=IFERROR(EDATE(W21,1),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z21",
+      "formula": "=IFERROR(EOMONTH(Y21,0),\"\")",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "D24",
+      "formula": "=UPPER(TEXT(Setup!$X10,\"MMM\"))",
+      "occurrences": 11
+    },
+    {
+      "example_cell": "J24",
+      "formula": "=UPPER(TEXT(Setup!X$13,\"MMM\"))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "C25",
+      "formula": "=Setup!$C$9",
+      "occurrences": 39
+    },
+    {
+      "example_cell": "D25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(C$21),MONTH(C$21),DAY(C$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(D$21),MONTH(D$21),DAY(D$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(E$21),MONTH(E$21),DAY(E$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(F$21),MONTH(F$21),DAY(F$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "H25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(G$21),MONTH(G$21),DAY(G$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(H$21),MONTH(H$21),DAY(H$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "J25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(I$21),MONTH(I$21),DAY(I$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(J$21),MONTH(J$21),DAY(J$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "L25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(K$21),MONTH(K$21),DAY(K$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(L$21),MONTH(L$21),DAY(L$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(M$21),MONTH(M$21),DAY(M$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(N$21),MONTH(N$21),DAY(N$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(O$21),MONTH(O$21),DAY(O$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(P$21),MONTH(P$21),DAY(P$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "R25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(Q$21),MONTH(Q$21),DAY(Q$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(R$21),MONTH(R$21),DAY(R$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "T25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(S$21),MONTH(S$21),DAY(S$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(T$21),MONTH(T$21),DAY(T$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "V25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(U$21),MONTH(U$21),DAY(U$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(V$21),MONTH(V$21),DAY(V$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "X25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(W$21),MONTH(W$21),DAY(W$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(X$21),MONTH(X$21),DAY(X$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z25",
+      "formula": "=SUMIFS(Sales!$K$7:$K31,Sales!$B$7:$B31,\">=\"&DATE(YEAR(Y$21),MONTH(Y$21),DAY(Y$21)),Sales!$B$7:$B31,\"<=\"&DATE(YEAR(Z$21),MONTH(Z$21),DAY(Z$21)))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB25",
+      "formula": "=SUM(D25:Z25)",
+      "occurrences": 2
+    },
+    {
+      "example_cell": "D26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(C$21),MONTH(C$21),DAY(C$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(D$21),MONTH(D$21),DAY(D$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(E$21),MONTH(E$21),DAY(E$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(F$21),MONTH(F$21),DAY(F$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "H26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(G$21),MONTH(G$21),DAY(G$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(H$21),MONTH(H$21),DAY(H$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "J26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(I$21),MONTH(I$21),DAY(I$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(J$21),MONTH(J$21),DAY(J$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "L26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(K$21),MONTH(K$21),DAY(K$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(L$21),MONTH(L$21),DAY(L$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(M$21),MONTH(M$21),DAY(M$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(N$21),MONTH(N$21),DAY(N$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(O$21),MONTH(O$21),DAY(O$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(P$21),MONTH(P$21),DAY(P$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "R26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(Q$21),MONTH(Q$21),DAY(Q$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(R$21),MONTH(R$21),DAY(R$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "T26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(S$21),MONTH(S$21),DAY(S$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(T$21),MONTH(T$21),DAY(T$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "V26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(U$21),MONTH(U$21),DAY(U$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(V$21),MONTH(V$21),DAY(V$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "X26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(W$21),MONTH(W$21),DAY(W$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(X$21),MONTH(X$21),DAY(X$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z26",
+      "formula": "=ABS(SUMIFS(Expenses!$F$7:$F31,Expenses!$B$7:$B31,\">=\"&DATE(YEAR(Y$21),MONTH(Y$21),DAY(Y$21)),Expenses!$B$7:$B31,\"<=\"&DATE(YEAR(Z$21),MONTH(Z$21),DAY(Z$21))))",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "D27",
+      "formula": "=D25-D26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "F27",
+      "formula": "=F25-F26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "H27",
+      "formula": "=H25-H26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "J27",
+      "formula": "=J25-J26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "L27",
+      "formula": "=L25-L26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "N27",
+      "formula": "=N25-N26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "P27",
+      "formula": "=P25-P26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "R27",
+      "formula": "=R25-R26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "T27",
+      "formula": "=T25-T26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "V27",
+      "formula": "=V25-V26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "X27",
+      "formula": "=X25-X26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "Z27",
+      "formula": "=Z25-Z26",
+      "occurrences": 1
+    },
+    {
+      "example_cell": "AB27",
+      "formula": "=AB25-AB26",
+      "occurrences": 1
+    }
+  ]
+}
