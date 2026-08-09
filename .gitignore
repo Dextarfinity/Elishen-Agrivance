@@ -26,6 +26,10 @@ capacitor/android/local.properties
 capacitor/android/app/src/main/assets/public/
 capacitor/android/app/src/main/assets/capacitor.config.json
 capacitor/android/app/src/main/assets/capacitor.plugins.json
+capacitor/ios/App/App/public/
+capacitor/ios/App/App/capacitor.config.json
+capacitor/ios/App/Pods/
+capacitor/ios/DerivedData/
 
 # ---- OS / editor noise ----
 Thumbs.db
