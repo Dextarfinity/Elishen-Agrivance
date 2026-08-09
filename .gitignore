@@ -2,12 +2,17 @@
 .env
 backend/.env
 *.env.local
+*.local.cmd
+*.keystore
+*.jks
 
 # ---- dependencies ----
 node_modules/
 
 # ---- database backups & dumps (large, and private business data) ----
 db/backups/
+# full pg_dump of the live DB — contains customer data and user PINs
+importer/bookkeeping_full.sql
 
 # ---- build outputs ----
 electron/dist/

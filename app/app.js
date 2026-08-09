@@ -61,8 +61,10 @@ function applyRoleGates() {
     b.onmouseenter = () => b.style.background = 'var(--surface-2)');
   [document.getElementById('umProfile'), document.getElementById('umLogout')].forEach((b) =>
     b.onmouseleave = () => b.style.background = '');
-  document.getElementById('umLogout').onclick = () => {
+  document.getElementById('umLogout').onclick = async () => {
+    try { await api.post('/api/logout'); } catch {}   // revoke server-side; offline is fine too
     localStorage.removeItem('ea_user');
+    localStorage.removeItem('ea_token');
     location.reload();
   };
   document.getElementById('umProfile').onclick = () => { menu.classList.add('hidden'); openProfile(); };
@@ -271,7 +273,7 @@ async function openProfile() {
 
 async function renderLogin() {
   let users = [];
-  try { users = await api.get('/api/users'); } catch {}
+  try { users = await api.get('/api/login_users'); } catch {}
   const ov = document.createElement('div');
   ov.id = 'loginOverlay';
   ov.style.cssText = 'position:fixed;inset:0;z-index:10000;background:#173f1e;display:flex;align-items:center;justify-content:center;padding:16px';
@@ -300,7 +302,7 @@ async function renderLogin() {
     </form>`;
   document.body.appendChild(ov);
   document.getElementById('srvChange').onclick = () => {
-    const v = prompt('Server address (the office PC running the system), e.g. http://192.168.1.50:3001',
+    const v = prompt('Server address, e.g. https://elishenagrivance.com (or http://192.168.1.50:3001 on the shop LAN)',
       window.API_BASE);
     if (v === null) return;
     localStorage.setItem('api_base', v.trim().replace(/\/+$/, ''));
@@ -310,7 +312,8 @@ async function renderLogin() {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
     try {
-      const u = await api.post('/api/login', { user_id: Number(f.user_id), pin: f.pin });
+      const { token, ...u } = await api.post('/api/login', { user_id: Number(f.user_id), pin: f.pin });
+      localStorage.setItem('ea_token', token);        // session token for every later call
       window._user = u;
       localStorage.setItem('ea_user', JSON.stringify(u));
       ov.remove();
@@ -2328,6 +2331,12 @@ document.addEventListener('submit', (e) => {
 
 // Load currency symbol once, then boot (login first if no saved session)
 try { window._user = JSON.parse(localStorage.getItem('ea_user') || 'null'); } catch { window._user = null; }
+// pre-token upgrade leftovers: a saved user without a session token can't call
+// the API anymore — send them through login once to pick up a token
+if (window._user && !localStorage.getItem('ea_token')) {
+  localStorage.removeItem('ea_user');
+  window._user = null;
+}
 api.get('/api/settings')
   .then((s) => { window._currency = s.currency_symbol || ''; })
   .catch(() => {})

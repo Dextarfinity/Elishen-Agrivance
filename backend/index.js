@@ -3,12 +3,57 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const crypto = require('crypto');
 const { Pool, types } = require('pg');
 
 // Return DATE columns as plain 'YYYY-MM-DD' strings, not timezone-shifted JS Dates
 types.setTypeParser(1082, (v) => v);
 
 const pool = new Pool({ client_encoding: 'UTF8' }); // reads PG* vars from .env
+
+// ---------- PIN hashing (scrypt, no plaintext at rest) ----------
+const sha256 = (s) => crypto.createHash('sha256').update(String(s)).digest('hex');
+function hashPin(pin) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  return `scrypt$${salt}$${crypto.scryptSync(String(pin), salt, 32).toString('hex')}`;
+}
+function verifyPin(pin, stored) {
+  if (typeof stored !== 'string' || stored === '') return false;
+  if (stored.startsWith('scrypt$')) {
+    const [, salt, hash] = stored.split('$');
+    return crypto.timingSafeEqual(
+      crypto.scryptSync(String(pin), salt, 32), Buffer.from(hash, 'hex'));
+  }
+  // legacy plaintext row not yet migrated (startup migration in flight)
+  return crypto.timingSafeEqual(
+    Buffer.from(sha256(pin), 'hex'), Buffer.from(sha256(stored), 'hex'));
+}
+
+// ---------- login sessions: bearer tokens, 30-day sliding expiry ----------
+// Only the SHA-256 of a token is stored — a leaked DB can't replay sessions.
+const SESSION_DAYS = 30;
+const bearerOf = (req) => (/^Bearer\s+([a-f0-9]{64})$/i.exec(req.get('authorization') || '') || [])[1];
+async function bootstrapAuth() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sessions (
+      token_hash text PRIMARY KEY,
+      user_id    integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      last_seen  timestamptz NOT NULL DEFAULT now(),
+      expires_at timestamptz NOT NULL
+    )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id)');
+  // one-time migration: hash any PIN still stored as plaintext
+  const { rows } = await pool.query(`SELECT id, pin FROM users WHERE pin NOT LIKE 'scrypt$%'`);
+  for (const u of rows)
+    await pool.query('UPDATE users SET pin = $2 WHERE id = $1', [u.id, hashPin(u.pin)]);
+  if (rows.length) console.log(`Auth: hashed ${rows.length} plaintext PIN(s).`);
+}
+bootstrapAuth().catch((e) => { console.error('Auth bootstrap failed:', e); process.exit(1); });
+
+// Behind Cloudflare Tunnel every req.ip is localhost — prefer the edge-provided
+// client IP for rate limiting and audit trails (LAN hits fall back to req.ip).
+const clientIp = (req) => req.get('cf-connecting-ip') || req.ip;
 const app = express();
 app.disable('x-powered-by');                       // no server fingerprinting
 app.use(cors());
@@ -29,7 +74,7 @@ function rateLimit(windowMs, max, tag) {
   return (req, res, next) => {
     const now = Date.now();
     const win = Math.floor(now / windowMs);
-    const key = `${tag}|${req.ip}|${win}`;
+    const key = `${tag}|${clientIp(req)}|${win}`;
     const n = (rlBuckets.get(key) || 0) + 1;
     rlBuckets.set(key, n);
     if (rlBuckets.size > 5000) {                       // prune stale windows
@@ -44,12 +89,40 @@ function rateLimit(windowMs, max, tag) {
 }
 app.use('/api/login', rateLimit(10 * 60000, 10, 'login'));   // brute-force guard: 10 tries / 10 min
 app.use('/api', rateLimit(60000, 400, 'api'));               // general: 400 req / min / device
+// ---------- session gate: no valid token, no API (identity comes from the
+// session — the old x-user header is display-only history and never trusted) ----------
+const PUBLIC_API = ['/login', '/login_users', '/health'];
+app.use('/api', (req, res, next) => {
+  if (PUBLIC_API.includes(req.path)) return next();
+  (async () => {
+    const token = bearerOf(req);
+    if (token) {
+      const th = sha256(token);
+      const { rows } = await pool.query(`
+        SELECT s.user_id, u.name FROM sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.token_hash = $1 AND s.expires_at > now() AND u.active`, [th]);
+      if (rows.length) {
+        req._auth = { user_id: rows[0].user_id, name: rows[0].name };
+        // sliding renewal, at most once an hour per session
+        pool.query(`UPDATE sessions SET last_seen = now(),
+                      expires_at = now() + interval '${SESSION_DAYS} days'
+                    WHERE token_hash = $1 AND last_seen < now() - interval '1 hour'`, [th])
+          .catch(() => {});
+        return next();
+      }
+    }
+    if (['POST', 'PUT', 'DELETE'].includes(req.method)) {
+      pool.query('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+        ['unknown', 'AUTH REFUSED', `${req.method} ${req.path} from ${clientIp(req)}`]).catch(() => {});
+    }
+    res.status(401).json({ error: 'Not signed in — please log in again.' });
+  })().catch((e) => res.status(500).json({ error: e.message }));
+});
 // ---------- audit trail: every mutating action is recorded with who did it ----------
 app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'DELETE'].includes(req.method)
       && !req.path.startsWith('/login') && !req.path.startsWith('/notifications')) {
-    let user = 'unknown';
-    try { user = decodeURIComponent(req.get('x-user') || '') || 'unknown'; } catch {}
+    const user = req._auth?.name || 'unknown';
     let detail = '';
     if (req.body && typeof req.body === 'object') {
       // never log secrets or bulky blobs — keep the trail readable
@@ -66,8 +139,7 @@ app.use('/api', (req, res, next) => {
 app.use('/api', (req, res, next) => {
   if (!['POST', 'PUT', 'DELETE'].includes(req.method) || req.path.startsWith('/login')) return next();
   (async () => {
-    let name = '';
-    try { name = decodeURIComponent(req.get('x-user') || ''); } catch {}
+    const name = req._auth?.name || '';
     const roles = await rolesOf(name);
     req._isAdmin = roles.admin;
     if (OWNER_ONLY_API.test(req.path) && !roles.owner) {
@@ -125,6 +197,7 @@ const NON_ADMIN_ALLOWED = [
   [/^PUT$/,    /^\/deliveries\/\d+$/],            // mark delivered, e-signature, DR details
   [/^POST$/,   /^\/attendance$/],                 // time in / out
   [/^POST$/,   /^\/change_pin$/],                 // own PIN change (old PIN required)
+  [/^POST$/,   /^\/logout$/],                     // end own session
   [/^POST$/,   /^\/notifications\/seen$/],        // mark own notifications read
   [/^POST$/,   /^\/store_visits$/],               // field visit reports (reps' core duty)
 ];
@@ -778,16 +851,21 @@ app.get('/api/audit', wrap(async (req, res) => {
   res.json(rows);
 }));
 
-// own PIN change: requires the current PIN, so it's safe for every role
+// own PIN change: requires the current PIN, and only ever touches the
+// logged-in account (the session decides whose PIN changes, not the body)
 app.post('/api/change_pin', wrap(async (req, res) => {
-  const { user_id, old_pin, new_pin } = req.body;
-  if (!user_id || !old_pin || !new_pin) return res.status(400).json({ error: 'all fields required' });
+  const { old_pin, new_pin } = req.body;
+  const user_id = req._auth.user_id;
+  if (!old_pin || !new_pin) return res.status(400).json({ error: 'all fields required' });
   if (String(new_pin).length < 4) return res.status(400).json({ error: 'New PIN must be at least 4 digits.' });
-  const { rows } = await q(
-    'UPDATE users SET pin = $3 WHERE id = $1 AND pin = $2 AND active RETURNING id',
-    [user_id, old_pin, new_pin]);
-  if (!rows.length) return res.status(401).json({ error: 'Current PIN is incorrect.' });
-  roleCache.delete((await q('SELECT name FROM users WHERE id=$1', [user_id])).rows[0]?.name);
+  const { rows } = await q('SELECT name, pin FROM users WHERE id = $1 AND active', [user_id]);
+  if (!rows.length || !verifyPin(old_pin, rows[0].pin))
+    return res.status(401).json({ error: 'Current PIN is incorrect.' });
+  await q('UPDATE users SET pin = $2 WHERE id = $1', [user_id, hashPin(new_pin)]);
+  // sign out every other device that knew the old PIN; this session stays
+  await q('DELETE FROM sessions WHERE user_id = $1 AND token_hash <> $2',
+    [user_id, sha256(bearerOf(req))]);
+  roleCache.delete(rows[0].name);
   res.json({ ok: true });
 }));
 
@@ -796,18 +874,33 @@ app.get('/api/users', wrap(async (req, res) => {
   const { rows } = await q('SELECT id, name, roles, active, daily_rate FROM users ORDER BY name');
   res.json(rows);          // PINs never leave the server on the list endpoint
 }));
+// minimal roster for the login screen's name picker — no PINs, no pay data
+app.get('/api/login_users', wrap(async (req, res) => {
+  const { rows } = await q('SELECT id, name, roles FROM users WHERE active ORDER BY name');
+  res.json(rows);
+}));
 app.post('/api/login', wrap(async (req, res) => {
   const { user_id, pin } = req.body;
   const { rows } = await q(
-    'SELECT id, name, roles FROM users WHERE id = $1 AND pin = $2 AND active', [user_id, pin ?? '']);
-  if (!rows.length) {
+    'SELECT id, name, roles, pin FROM users WHERE id = $1 AND active', [user_id]);
+  if (!rows.length || !verifyPin(pin ?? '', rows[0].pin)) {
     // failed attempts land in the audit trail (who was targeted, from where)
     const { rows: who } = await q('SELECT name FROM users WHERE id = $1', [user_id]);
     q('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
-      [who[0]?.name || `user #${user_id}`, 'LOGIN FAILED', `wrong PIN from ${req.ip}`]).catch(() => {});
+      [who[0]?.name || `user #${user_id}`, 'LOGIN FAILED', `wrong PIN from ${clientIp(req)}`]).catch(() => {});
     return res.status(401).json({ error: 'Wrong PIN, or the account is inactive.' });
   }
-  res.json(rows[0]);
+  // issue the session token — the client presents it as `Authorization: Bearer …`
+  const token = crypto.randomBytes(32).toString('hex');
+  await q(`INSERT INTO sessions (token_hash, user_id, expires_at)
+           VALUES ($1, $2, now() + interval '${SESSION_DAYS} days')`, [sha256(token), rows[0].id]);
+  q('DELETE FROM sessions WHERE expires_at < now()').catch(() => {});   // opportunistic sweep
+  const { pin: _pin, ...user } = rows[0];
+  res.json({ ...user, token });
+}));
+app.post('/api/logout', wrap(async (req, res) => {
+  await q('DELETE FROM sessions WHERE token_hash = $1', [sha256(bearerOf(req))]);
+  res.json({ ok: true });
 }));
 app.post('/api/users', wrap(async (req, res) => {
   const { name, roles, pin, active, daily_rate } = req.body;
@@ -815,7 +908,7 @@ app.post('/api/users', wrap(async (req, res) => {
   const { rows } = await q(
     `INSERT INTO users (name, roles, pin, active, daily_rate) VALUES ($1,$2,$3,$4,$5)
      RETURNING id, name, roles, active, daily_rate`,
-    [name, roles, pin || '1234', active ?? true, daily_rate ?? 0]);
+    [name, roles, hashPin(pin || '1234'), active ?? true, daily_rate ?? 0]);
   // every employee can earn commissions — keep the commission roster in step
   await q(`INSERT INTO sales_reps (name, commission_rate)
            SELECT $1, 0 WHERE NOT EXISTS
@@ -824,13 +917,18 @@ app.post('/api/users', wrap(async (req, res) => {
 }));
 app.put('/api/users/:id', wrap(async (req, res) => {
   const { name, roles, pin, active, daily_rate } = req.body;
+  const newPin = (pin != null && String(pin) !== '') ? hashPin(pin) : null;
   const { rows } = await q(
     `UPDATE users SET name = COALESCE($2, name), roles = COALESCE($3, roles),
-       pin = COALESCE(NULLIF($4, ''), pin), active = COALESCE($5, active),
+       pin = COALESCE($4, pin), active = COALESCE($5, active),
        daily_rate = COALESCE($6, daily_rate)
      WHERE id = $1 RETURNING id, name, roles, active, daily_rate`,
-    [req.params.id, name ?? null, roles ?? null, pin ?? null, active ?? null, daily_rate ?? null]);
+    [req.params.id, name ?? null, roles ?? null, newPin, active ?? null, daily_rate ?? null]);
   if (!rows.length) return res.status(404).json({ error: 'not found' });
+  // an admin PIN reset or deactivation kicks that user's devices out immediately
+  if (newPin || active === false)
+    await q('DELETE FROM sessions WHERE user_id = $1', [req.params.id]);
+  roleCache.delete(rows[0].name);
   res.json(rows[0]);
 }));
 app.delete('/api/users/:id', wrap(async (req, res) => {

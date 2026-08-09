@@ -106,34 +106,31 @@ get a 404; only the installed apps (which carry their own bundled UI) can use
 the system. Do this only AFTER the APK and desktop installer are distributed,
 or office browser access dies immediately.
 
-> Honest note: app-only hides the UI but the **API endpoints remain the real
-> attack surface** — anyone on the network can still send requests directly.
-> The upgrade that actually locks trespassers out is **login tokens + hashed
-> PINs** (server refuses any request without a valid session token). Do that
-> before exposing anything through Cloudflare.
+> Note: the API is protected by **login tokens + hashed PINs** — every request
+> (even reads) needs a valid session token from `/api/login`; PINs are stored
+> scrypt-hashed; sessions live 30 days (sliding) and die on logout, PIN change,
+> or deactivation. App-only mode is now just cosmetic (hides the browser UI).
 
 ---
 
-## 5. Cloudflare domain (planned)
+## 5. Cloudflare domain (LIVE)
 
-The clean way to expose the shop server safely is **Cloudflare Tunnel** — no port
-forwarding, free HTTPS:
+The server is exposed at **https://elishenagrivance.com** (and `www.`) through a
+Cloudflare Tunnel — no port forwarding, free HTTPS. Setup on the server PC:
 
-```bat
-winget install Cloudflare.cloudflared
-cloudflared tunnel login
-cloudflared tunnel create elishen
-cloudflared tunnel route dns elishen app.yourdomain.com
-cloudflared tunnel run --url http://localhost:3001 elishen
-```
-(Then install it as a service: `cloudflared service install` with a config file.)
+- Tunnel `elishen` (`8cee011b-1707-4b19-9f37-75db437bd716`), created with
+  `cloudflared tunnel login/create/route dns`
+- Windows service **Cloudflared** (Automatic start, auto-restart on crash) runs
+  `cloudflared tunnel run` with config + credentials in
+  `C:\Windows\System32\config\systemprofile\.cloudflared\`
+  (a user-profile copy for manual runs is in `C:\Users\User\.cloudflared\`)
 
-After that:
-- Phones/desktops anywhere use `https://app.yourdomain.com` as the server address
+Client notes:
+- Phones/desktops anywhere use `https://elishenagrivance.com` as the server
+  address — the app defaults to it (browser UI talks to its own origin)
 - iOS Safari + Android browsers get camera/GPS (HTTPS = secure context)
-- The Android APK keeps working — just change the server address on the login screen
-- **Before going public**: finish the auth-token + hashed-PIN upgrade — an
-  internet-exposed API must not rely on the current header-based identity.
+- The auth-token + hashed-PIN upgrade is done — identity comes from the session
+  token, never from a client-supplied header.
 
 ---
 

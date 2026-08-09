@@ -27,7 +27,22 @@ window._apiBusy = () => _inflight.size;
 window._apiTxSeq = () => _txSeq;
 
 // background calls that shouldn't chatter with success toasts
-const QUIET = [/^\/api\/notifications/, /^\/api\/login$/, /^\/api\/customer_tier$/];
+const QUIET = [/^\/api\/notifications/, /^\/api\/login$/, /^\/api\/logout$/, /^\/api\/customer_tier$/];
+
+// session token from login — sent as a Bearer header on every request
+function authHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  const t = localStorage.getItem('ea_token');
+  if (t) h['Authorization'] = `Bearer ${t}`;
+  return h;
+}
+// the server no longer recognizes this device's session — back to the login screen
+function sessionExpired() {
+  localStorage.removeItem('ea_user');
+  localStorage.removeItem('ea_token');
+  toast('Session expired — please log in again.', false);
+  setTimeout(() => location.reload(), 900);
+}
 
 // ---- offline queue: field transactions survive dead signal ----
 // only NEW records queue (idempotent-ish); edits/deletes stay online-only
@@ -69,15 +84,19 @@ const api = {
       _txSeq++;
     }
     try {
-      let who = '';
-      try { who = (JSON.parse(localStorage.getItem('ea_user') || 'null') || {}).name || ''; } catch {}
       const res = await fetch(`${window.API_BASE}${path}`, {
-        headers: { 'Content-Type': 'application/json', 'x-user': encodeURIComponent(who) },
+        headers: authHeaders(),
         ...opts,
         body: opts.body ? JSON.stringify(opts.body) : undefined,
       });
       if (!res.ok) {
         const msg = (await res.json().catch(() => ({}))).error || res.statusText;
+        // a dead/revoked session on any non-login call → clean local logout
+        if (res.status === 401 && !/^\/api\/(login|change_pin)/.test(path)
+            && localStorage.getItem('ea_token')) {
+          sessionExpired();
+          throw new Error(msg);
+        }
         if (mutating) toast(msg || 'Transaction failed', false);
         throw new Error(msg);
       }
@@ -119,7 +138,7 @@ async function syncOfflineQueue() {
     try {
       const res = await fetch(`${window.API_BASE}${item.path}`, {
         method: item.method,
-        headers: { 'Content-Type': 'application/json', 'x-user': encodeURIComponent(item.who || '') },
+        headers: authHeaders(),
         body: JSON.stringify(item.body),
       });
       if (res.ok) {
