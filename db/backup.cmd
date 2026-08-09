@@ -18,7 +18,7 @@ set OUTDIR=%~dp0backups\auto
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HHmm"') do set STAMP=%%i
-"D:\postgresql\bin\pg_dump.exe" -U postgres -h localhost -Fc -f "%OUTDIR%\bookkeeping_%STAMP%.dump" bookkeeping
+"C:\Program Files\PostgreSQL\17\bin\pg_dump.exe" -U postgres -h localhost -Fc -f "%OUTDIR%\bookkeeping_%STAMP%.dump" bookkeeping
 if errorlevel 1 (
   echo BACKUP FAILED %STAMP% >> "%OUTDIR%\backup.log"
   exit /b 1
