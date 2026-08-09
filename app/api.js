@@ -6,10 +6,10 @@ function toast(msg, ok = true) {
   if (!t) {
     t = document.createElement('div');
     t.id = 'txToast';
-    t.style.cssText = 'position:fixed;bottom:26px;left:50%;transform:translateX(-50%);'
-      + 'padding:10px 20px;border-radius:999px;font:600 13.5px "Segoe UI",Arial,sans-serif;'
+    t.style.cssText = 'position:fixed;top:calc(env(safe-area-inset-top,0px) + 14px);right:14px;'
+      + 'padding:10px 18px;border-radius:12px;font:600 13.5px "Segoe UI",Arial,sans-serif;'
       + 'color:#fff;z-index:960;display:none;box-shadow:0 6px 20px rgba(0,0,0,.3);'
-      + 'max-width:92vw;text-align:center';
+      + 'max-width:min(86vw,340px);text-align:left';
     document.body.appendChild(t);
   }
   t.style.background = ok ? 'rgba(30,92,40,.96)' : 'rgba(179,38,30,.96)';

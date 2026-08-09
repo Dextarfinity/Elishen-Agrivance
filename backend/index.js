@@ -720,8 +720,7 @@ app.post('/api/attendance', wrap(async (req, res) => {
 
 // ---------- notifications (bell): latest notices + per-user unread count ----------
 app.get('/api/notifications', wrap(async (req, res) => {
-  let name = '';
-  try { name = decodeURIComponent(req.get('x-user') || ''); } catch {}
+  const name = req._auth?.name || '';
   const [{ rows: items }, { rows: seen }] = await Promise.all([
     q('SELECT * FROM notifications ORDER BY id DESC LIMIT 30'),
     q('SELECT last_id FROM notification_reads WHERE user_name = $1', [name]),
@@ -731,8 +730,7 @@ app.get('/api/notifications', wrap(async (req, res) => {
   res.json({ items, unread, last_seen: lastSeen });
 }));
 app.post('/api/notifications/seen', wrap(async (req, res) => {
-  let name = '';
-  try { name = decodeURIComponent(req.get('x-user') || ''); } catch {}
+  const name = req._auth?.name || '';
   if (!name) return res.status(400).json({ error: 'no user' });
   const { rows } = await q('SELECT COALESCE(MAX(id),0) AS m FROM notifications');
   await q(`INSERT INTO notification_reads (user_name, last_id) VALUES ($1,$2)
