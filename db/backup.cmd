@@ -17,8 +17,13 @@ call "%~dp0pg_password.local.cmd"
 set OUTDIR=%~dp0backups\auto
 if not exist "%OUTDIR%" mkdir "%OUTDIR%"
 
+rem find pg_dump wherever this machine keeps PostgreSQL
+set PGDUMP=D:\postgresql\bin\pg_dump.exe
+if not exist "%PGDUMP%" set PGDUMP=C:\Program Files\PostgreSQL\17\bin\pg_dump.exe
+if not exist "%PGDUMP%" set PGDUMP=pg_dump
+
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd_HHmm"') do set STAMP=%%i
-"D:\postgresql\bin\pg_dump.exe" -U postgres -h localhost -Fc -f "%OUTDIR%\bookkeeping_%STAMP%.dump" bookkeeping
+"%PGDUMP%" -U postgres -h localhost -Fc -f "%OUTDIR%\bookkeeping_%STAMP%.dump" bookkeeping
 if errorlevel 1 (
   echo BACKUP FAILED %STAMP% >> "%OUTDIR%\backup.log"
   exit /b 1
