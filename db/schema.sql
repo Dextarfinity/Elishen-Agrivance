@@ -323,6 +323,33 @@ CREATE INDEX IF NOT EXISTS idx_expenses_date    ON expenses(date);
 CREATE INDEX IF NOT EXISTS idx_purchases_item   ON purchases(item_id);
 
 -- Add e-signature support for payments: payer name and signature image (data URL)
-ALTER TABLE IF EXISTS payments ADD COLUMN IF NOT EXISTS payer_name text;
-ALTER TABLE IF EXISTS payments ADD COLUMN IF NOT EXISTS signature text;
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.tables
+        WHERE table_schema = current_schema()
+          AND table_name = 'payments'
+    ) THEN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'payments'
+              AND column_name = 'payer_name'
+        ) THEN
+            EXECUTE 'ALTER TABLE payments ADD COLUMN payer_name text';
+        END IF;
+
+        IF NOT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = current_schema()
+              AND table_name = 'payments'
+              AND column_name = 'signature'
+        ) THEN
+            EXECUTE 'ALTER TABLE payments ADD COLUMN signature text';
+        END IF;
+    END IF;
+END $$;
 -- end of schema
