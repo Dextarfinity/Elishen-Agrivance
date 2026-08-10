@@ -6,14 +6,11 @@ window._view = 'dashboard';
 const ADMIN_VIEWS = ['matrix', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
   'monitoring', 'reports', 'settings'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
-const OWNER_VIEWS = ['expenses', 'accounts', 'team'];
+const OWNER_VIEWS = ['accounts', 'team', 'expenses'];
 const isOwner = () => {
   const roles = window._user?.roles || '';
   const name = (window._user?.name || '').trim();
-  // Allow explicit Owner role or grant owner access to Glomer Celestino
-  if (/\bowner\b/i.test(roles)) return true;
-  if (/^\s*Glomer\s+Celestino\s*$/i.test(name)) return true;
-  return false;
+  return /\bowner\b/i.test(roles) || /^\s*Glomer\s+Celestino\s*$/i.test(name);
 };
 // controls a non-admin never gets: history/money rewrites, pricing, stock, approvals
 const ADMIN_CONTROLS = '[data-editsale],[data-cancel],[data-delsale],[data-editpay],[data-delpay],'

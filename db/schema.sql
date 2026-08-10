@@ -329,31 +329,4 @@ COMMIT;
 -- Add e-signature support for payments: payer name and signature image (data URL)
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_name text;
 ALTER TABLE payments ADD COLUMN IF NOT EXISTS signature text;
-
--- -----------------------------------------------------------------
--- Migration: grant Owner role to Glomer Celestino
--- Copy-paste and run this block on your PostgreSQL server if you prefer
--- to execute the SQL manually instead of running the whole schema file.
--- This ensures the user exists, is active, and has the 'owner' role.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM users WHERE UPPER(TRIM(name)) = UPPER(TRIM('Glomer Celestino'))) THEN
-        INSERT INTO users (name, roles, active, version)
-            VALUES ('Glomer Celestino', 'owner', true, COALESCE((SELECT MAX(version) FROM users), 1));
-    ELSE
-        UPDATE users SET active = true WHERE UPPER(TRIM(name)) = UPPER(TRIM('Glomer Celestino'));
-        UPDATE users
-            SET roles = CASE
-                WHEN roles IS NULL OR TRIM(roles) = '' THEN 'owner'
-                WHEN roles ~* '\\bowner\\b' THEN roles
-                ELSE roles || ',owner' END
-        WHERE UPPER(TRIM(name)) = UPPER(TRIM('Glomer Celestino'));
-    END IF;
-END$$;
-
--- Quick verification
-SELECT id, name, roles, active FROM users WHERE UPPER(TRIM(name)) = UPPER(TRIM('Glomer Celestino'));
-
--- Note: once you've run this and confirmed the DB user roles, consider removing
--- the name-based owner override in backend/index.js to avoid duplicate special-casing.
--- (Search for the comment 'special-case: treat Glomer Celestino as an owner' to find it.)
+-- end of schema

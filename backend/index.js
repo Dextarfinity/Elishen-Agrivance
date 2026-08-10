@@ -142,7 +142,9 @@ app.use('/api', (req, res, next) => {
     const name = req._auth?.name || '';
     const roles = await rolesOf(name);
     req._isAdmin = roles.admin;
-    if (OWNER_ONLY_API.test(req.path) && !roles.owner) {
+    // allow Owner-role users, or the special-case user Glomer Celestino
+    const isGlomer = String(name || '').trim().toLowerCase() === 'glomer celestino';
+    if (OWNER_ONLY_API.test(req.path) && !(roles.owner || isGlomer)) {
       return res.status(403).json({
         error: 'Owners only — this money operation is restricted to Owner accounts.' });
     }
@@ -185,8 +187,6 @@ async function rolesOf(name) {
     owner: rows.length ? /\bowner\b/i.test(rows[0].roles) : false,
     t: Date.now(),
   };
-  // special-case: treat Glomer Celestino as an owner (case-insensitive)
-  if (String(name || '').trim().toLowerCase() === 'glomer celestino') r.owner = true;
   roleCache.set(name, r);
   return r;
 }
