@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS sales (                       -- Sales Database tab (
     discount      numeric(14,2) NOT NULL DEFAULT 0,
     total         numeric(14,2) NOT NULL DEFAULT 0,
     amount_paid   numeric(14,2) NOT NULL DEFAULT 0,   -- for AR balance
-    status        text NOT NULL DEFAULT 'Completed'   -- 'Cancelled' rows excluded from stock/dashboards
+    status        text NOT NULL DEFAULT 'Completed',  -- 'Cancelled' rows excluded from stock/dashboards
+    version       integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS sale_items (                  -- Sales Database ITEMS/QTY/TOTAL PRICE columns
@@ -101,7 +102,22 @@ CREATE TABLE IF NOT EXISTS sale_items (                  -- Sales Database ITEMS
     item_id   int NOT NULL REFERENCES items(id),
     qty       numeric(14,3) NOT NULL,
     unit_price numeric(14,2) NOT NULL,
-    total_price numeric(14,2) NOT NULL
+    discount  numeric(14,2) NOT NULL DEFAULT 0,
+    total_price numeric(14,2) NOT NULL,
+    promo     boolean NOT NULL DEFAULT false
+);
+
+CREATE TABLE IF NOT EXISTS payments (                    -- Payments ledger
+    id          serial PRIMARY KEY,
+    sale_id     int NOT NULL REFERENCES sales(id) ON DELETE CASCADE,
+    date        date NOT NULL,
+    amount      numeric(14,2) NOT NULL,
+    account_id  int REFERENCES accounts(id),
+    or_no       text UNIQUE,
+    notes       text,
+    payer_name  text,
+    signature   text,
+    version     integer NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS purchases (                   -- "Sold Items" tab = purchase orders from vendors
@@ -319,37 +335,73 @@ GROUP BY v.id, v.name;
 CREATE INDEX IF NOT EXISTS idx_sales_date       ON sales(date);
 CREATE INDEX IF NOT EXISTS idx_sales_customer   ON sales(UPPER(TRIM(customer)));
 CREATE INDEX IF NOT EXISTS idx_sale_items_item  ON sale_items(item_id);
+CREATE INDEX IF NOT EXISTS idx_payments_sale    ON payments(sale_id);
+CREATE INDEX IF NOT EXISTS idx_payments_date    ON payments(date);
+CREATE INDEX IF NOT EXISTS idx_payments_or_no   ON payments(or_no);
 CREATE INDEX IF NOT EXISTS idx_expenses_date    ON expenses(date);
 CREATE INDEX IF NOT EXISTS idx_purchases_item   ON purchases(item_id);
 
--- Add e-signature support for payments: payer name and signature image (data URL)
+-- Backfill missing columns for older databases.
 DO $$
 BEGIN
     IF EXISTS (
-        SELECT 1
-        FROM information_schema.tables
-        WHERE table_schema = current_schema()
-          AND table_name = 'payments'
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'sales'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'sales' AND column_name = 'version'
     ) THEN
-        IF NOT EXISTS (
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = current_schema()
-              AND table_name = 'payments'
-              AND column_name = 'payer_name'
-        ) THEN
-            EXECUTE 'ALTER TABLE payments ADD COLUMN payer_name text';
-        END IF;
+        EXECUTE 'ALTER TABLE sales ADD COLUMN version integer NOT NULL DEFAULT 1';
+    END IF;
 
-        IF NOT EXISTS (
-            SELECT 1
-            FROM information_schema.columns
-            WHERE table_schema = current_schema()
-              AND table_name = 'payments'
-              AND column_name = 'signature'
-        ) THEN
-            EXECUTE 'ALTER TABLE payments ADD COLUMN signature text';
-        END IF;
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'sale_items'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'sale_items' AND column_name = 'discount'
+    ) THEN
+        EXECUTE 'ALTER TABLE sale_items ADD COLUMN discount numeric(14,2) NOT NULL DEFAULT 0';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'sale_items'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'sale_items' AND column_name = 'promo'
+    ) THEN
+        EXECUTE 'ALTER TABLE sale_items ADD COLUMN promo boolean NOT NULL DEFAULT false';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'payments'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'payments' AND column_name = 'payer_name'
+    ) THEN
+        EXECUTE 'ALTER TABLE payments ADD COLUMN payer_name text';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'payments'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'payments' AND column_name = 'signature'
+    ) THEN
+        EXECUTE 'ALTER TABLE payments ADD COLUMN signature text';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = current_schema() AND table_name = 'payments'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = current_schema() AND table_name = 'payments' AND column_name = 'version'
+    ) THEN
+        EXECUTE 'ALTER TABLE payments ADD COLUMN version integer NOT NULL DEFAULT 1';
     END IF;
 END $$;
 -- end of schema
