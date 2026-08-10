@@ -180,9 +180,13 @@ async function rolesOf(name) {
     'SELECT roles FROM users WHERE UPPER(TRIM(name)) = UPPER(TRIM($1)) AND active', [name]);
   const r = {
     admin: rows.length ? /\badmin\b/i.test(rows[0].roles) : false,
+    // owners are users with the owner role. Additionally, allow Glomer Celestino
+    // as an owner override in case the DB hasn't been updated yet.
     owner: rows.length ? /\bowner\b/i.test(rows[0].roles) : false,
     t: Date.now(),
   };
+  // special-case: treat Glomer Celestino as an owner (case-insensitive)
+  if (String(name || '').trim().toLowerCase() === 'glomer celestino') r.owner = true;
   roleCache.set(name, r);
   return r;
 }
@@ -248,6 +252,7 @@ function maybeNotify(req, user) {
 const wrap = (fn) => (req, res) =>
   fn(req, res).catch((e) => {
     console.error(e);
+    if (e && e.status && Number.isInteger(e.status)) return res.status(e.status).json({ error: e.message });
     res.status(500).json({ error: e.message });
   });
 
@@ -412,7 +417,18 @@ app.post('/api/sales', wrap(async (req, res) => {
         [String(s.customer).trim(), s.store_farm ?? null, s.contact_no ?? null, s.term ?? null]);
       await client.query('UPDATE sales SET customer_id = $1 WHERE id = $2', [cr[0].id, s.id]);
     }
+    const warnings = [];
     for (const it of items) {
+      // check availability from the reporting view
+      const { rows: st } = await client.query('SELECT on_hand, minimum_stock, name FROM v_item_stock WHERE id = $1', [it.item_id]);
+      const on_hand = st.length ? Number(st[0].on_hand) : 0;
+      const name = st.length ? st[0].name : `#${it.item_id}`;
+      if (on_hand <= 0) {
+        throw { status: 400, message: `Cannot sell "${name}" — item is out of stock.` };
+      }
+      if (Number(it.qty) > on_hand) {
+        throw { status: 400, message: `Cannot sell ${Number(it.qty)} of "${name}" — only ${on_hand} available.` };
+      }
       // unit_price = list/unit cost; discount = per-unit; amount follows the NET price
       // promo lines are FREE GOODS paid by URC marketing: 0.00 but they still move stock
       const disc = Number(it.discount) || 0;
@@ -421,6 +437,12 @@ app.post('/api/sales', wrap(async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [s.id, it.item_id, it.qty, it.unit_price, disc,
          it.qty * (it.unit_price - disc), !!it.promo]);
+      // warn when remaining stock is low
+      if (st.length) {
+        const remaining = on_hand - Number(it.qty);
+        if (remaining <= 0) warnings.push(`"${name}" will be out of stock after this sale.`);
+        else if (remaining <= 10) warnings.push(`Low stock: "${name}" — ${remaining} unit(s) remaining.`);
+      }
     }
     // initial payment goes straight into the ledger
     if (Number(s.amount_paid) > 0) {
@@ -430,7 +452,7 @@ app.post('/api/sales', wrap(async (req, res) => {
         [s.id, s.date, s.amount_paid, s.account_id, req.body.or_no || null]);
     }
     await client.query('COMMIT');
-    res.status(201).json(s);
+    res.status(201).json({ sale: s, warnings });
   } catch (e) {
     await client.query('ROLLBACK');
     if (e.code === '23505' && String(e.constraint).includes('sales_no')) {
@@ -485,20 +507,31 @@ app.put('/api/sales/:id/full', wrap(async (req, res) => {
       [...cols.map((c) => sale[c]), req.params.id]);
     const s = rows[0];
     await client.query('DELETE FROM sale_items WHERE sale_id = $1', [s.id]);
+    const warnings = [];
     for (const it of items) {
+      // validate stock on full-edit as well
+      const { rows: st } = await client.query('SELECT on_hand, minimum_stock, name FROM v_item_stock WHERE id = $1', [it.item_id]);
+      const on_hand = st.length ? Number(st[0].on_hand) : 0;
+      const name = st.length ? st[0].name : `#${it.item_id}`;
+      if (on_hand <= 0) throw { status: 400, message: `Cannot sell "${name}" — item is out of stock.` };
+      if (Number(it.qty) > on_hand) throw { status: 400, message: `Cannot sell ${Number(it.qty)} of "${name}" — only ${on_hand} available.` };
       const disc = Number(it.discount) || 0;
       await client.query(
         `INSERT INTO sale_items (sale_id, item_id, qty, unit_price, discount, total_price, promo)
          VALUES ($1,$2,$3,$4,$5,$6,$7)`,
         [s.id, it.item_id, it.qty, it.unit_price, disc,
          it.qty * (it.unit_price - disc), !!it.promo]);
+      // optionally warn when low
+      const remaining = on_hand - Number(it.qty);
+      if (remaining <= 0) warnings.push(`"${name}" will be out of stock after this sale.`);
+      else if (remaining <= 10) warnings.push(`Low stock: "${name}" — ${remaining} unit(s) remaining.`);
     }
     // paid-to-date always re-derives from the payments ledger
     await client.query(
       `UPDATE sales SET amount_paid = COALESCE(
          (SELECT SUM(amount) FROM payments WHERE sale_id = $1), 0) WHERE id = $1`, [s.id]);
     await client.query('COMMIT');
-    res.json(s);
+    res.json({ sale: s, warnings });
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;

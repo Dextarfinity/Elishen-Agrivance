@@ -7,7 +7,14 @@ const ADMIN_VIEWS = ['matrix', 'stocktake', 'purchases', 'expenses', 'accounts',
   'monitoring', 'reports', 'settings'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
 const OWNER_VIEWS = ['expenses', 'accounts', 'team'];
-const isOwner = () => /\bowner\b/i.test(window._user?.roles || '');
+const isOwner = () => {
+  const roles = window._user?.roles || '';
+  const name = (window._user?.name || '').trim();
+  // Allow explicit Owner role or grant owner access to Glomer Celestino
+  if (/\bowner\b/i.test(roles)) return true;
+  if (/^\s*Glomer\s+Celestino\s*$/i.test(name)) return true;
+  return false;
+};
 // controls a non-admin never gets: history/money rewrites, pricing, stock, approvals
 const ADMIN_CONTROLS = '[data-editsale],[data-cancel],[data-delsale],[data-editpay],[data-delpay],'
   + '[data-editorder],[data-deldr],[data-pricing],[data-approve],[data-usertoggle],'
@@ -1090,7 +1097,7 @@ function wire(view) {
       try {
         if (window._editSale) {
           // full edit — version-checked so a concurrent edit gets a clear 409, not overwritten
-          await api.put(`/api/sales/${window._editSale.id}/full`, {
+          const upd = await api.put(`/api/sales/${window._editSale.id}/full`, {
             sales_no: f.sales_no, date: f.date, customer: f.customer,
             store_farm: f.store_farm || null, term: f.term || null,
             due_date: f.due_date || null, contact_no: f.contact_no || null,
@@ -1103,11 +1110,12 @@ function wire(view) {
           });
           window._editSale = null;
           document.getElementById('newSaleModal')?.classList.add('hidden');
-          alert('Sale updated.');
+          if (upd && upd.warnings && upd.warnings.length) alert('Sale updated.\n\n' + upd.warnings.join('\n'));
+          else alert('Sale updated.');
           show('sales');
           return;
         }
-        await api.post('/api/sales', {
+        const res = await api.post('/api/sales', {
           ...f,
           due_date: f.due_date || null,
           account_id: f.account_id || null, sales_rep_id: f.sales_rep_id || null,
@@ -1125,7 +1133,9 @@ function wire(view) {
             });
           } catch {}
         }
-        alert('Sale saved.');
+        if (res && res.warnings && res.warnings.length) {
+          alert('Sale saved.\n\n' + res.warnings.join('\n'));
+        } else alert('Sale saved.');
         show('sales');
       } catch (err) {
         if (err.queued) { show('sales'); return; }   // stored offline — will sync
@@ -2071,6 +2081,57 @@ function openPricingEditor(id) {
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-pricing]');
   if (b) openPricingEditor(Number(b.dataset.pricing));
+});
+
+// Open a small modal to register a condition adjustment (Opened / Damaged)
+function openConditionModal(itemId, status) {
+  document.getElementById('condModal')?.remove();
+  const modal = document.createElement('div');
+  modal.id = 'condModal'; modal.className = 'modal';
+  const today = new Date().toISOString().slice(0, 10);
+  modal.innerHTML = `
+    <div class="modal-box" style="width:min(420px,96%)">
+      <div class="modal-head"><h3 style="margin:0;flex:1">Mark ${status} — item ${itemId}</h3>
+        <button type="button" class="mini" id="condClose">Close</button></div>
+      <div class="modal-body" style="padding:12px">
+        <form id="condForm" class="form">
+          <div class="grid2">
+            <label>Date <input type="date" name="date" value="${today}" required></label>
+            <label>Qty (use negative to reduce) <input type="number" step="any" name="qty" required></label>
+          </div>
+          <label>Notes <input name="notes" placeholder="Optional note"></label>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <button type="submit" class="primary">Save</button>
+            <button type="button" class="ghost" id="condCancel">Cancel</button>
+          </div>
+        </form>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const form = modal.querySelector('#condForm');
+  modal.querySelector('#condClose').onclick = () => modal.remove();
+  modal.querySelector('#condCancel').onclick = () => modal.remove();
+  form.onsubmit = async (ev) => {
+    ev.preventDefault();
+    const data = new FormData(form);
+    const date = data.get('date');
+    const qty = Number(data.get('qty')) || 0;
+    const notes = `${status.toLowerCase()}:${data.get('notes') || ''}`;
+    try {
+      await api.post('/api/manual_inventory', {
+        date, batch_no: `COND-${status}-${itemId}-${Date.now()}`, item_id: Number(itemId), qty, notes,
+      });
+      modal.remove();
+      show(window._view);
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+}
+
+document.addEventListener('click', (e) => {
+  const pb = e.target.closest && e.target.closest('[data-mark-opened]');
+  if (pb) { openConditionModal(pb.dataset.markOpened, 'Opened'); return; }
+  const pd = e.target.closest && e.target.closest('[data-mark-damaged]');
+  if (pd) { openConditionModal(pd.dataset.markDamaged, 'Damaged'); return; }
 });
 
 // ---- pagination controls (delegated once; re-renders only the one table) ----

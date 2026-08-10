@@ -791,6 +791,9 @@ const views = {
           { key: 'deal', label: 'Deal', render: (r) => esc(r.deal ?? '') },
           { key: '_st', label: 'Status', render: (r) => statusBadge(stockBy[r.id]?.status ?? '-') },
           { key: '_pr', label: '', render: (r) => `<button type="button" class="mini" data-pricing="${r.id}">Pricing</button>` },
+            { key: '_cond', label: '', render: (r) =>
+              `<button type="button" class="mini" data-mark-opened="${r.id}">Opened</button>
+               <button type="button" class="mini danger" data-mark-damaged="${r.id}">Damaged</button>` },
         ],
       })}
       <div id="priceModal" class="modal hidden">
