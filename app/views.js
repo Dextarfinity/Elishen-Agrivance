@@ -335,7 +335,15 @@ const views = {
             ${accounts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label>
           <label>OR No. (manual — must be unique)
             <input name="or_no" autocomplete="off"><small id="orCheck"></small></label>
+          <label>Payer name <input name="payer_name" placeholder="Printed name (optional)"></label>
           <label>Notes <input name="notes"></label>
+          <input type="hidden" name="signature">
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <div id="paySigPreview"><small style="color:var(--ink-2)">No signature captured yet.</small></div>
+          <span style="flex:1"></span>
+          <button type="button" class="mini" id="paySigCapture">Capture signature</button>
+          <button type="button" class="mini" id="paySigClear">Clear</button>
         </div>
         <button type="submit" class="primary">Record payment</button>
       </form>
@@ -365,6 +373,8 @@ const views = {
             <button type="button" class="mini" id="payEditClose">Close</button></div>
           <div class="modal-body"><form id="payEditForm" class="form">
             <input type="hidden" name="id">
+            <input type="hidden" name="signature">
+            <label>Payer name <input name="payer_name" placeholder="Printed name (optional)"></label>
             <div class="grid3">
               <label>OR No. (manual — must be unique)
                 <input name="or_no" autocomplete="off"><small id="orEditCheck"></small></label>
@@ -373,6 +383,12 @@ const views = {
               <label>Account <select name="account_id"><option value="">—</option>
                 ${accounts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label>
               <label>Notes <input name="notes"></label>
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+              <div id="payEditSigPreview"><small style="color:var(--ink-2)">No signature captured yet.</small></div>
+              <span style="flex:1"></span>
+              <button type="button" class="mini" id="payEditSigCapture">Capture signature</button>
+              <button type="button" class="mini" id="payEditSigClear">Clear</button>
             </div>
             <button type="submit" class="primary">Save changes</button>
           </form></div>

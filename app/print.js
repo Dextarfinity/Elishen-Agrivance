@@ -457,6 +457,9 @@ function docShell(title, subtitle, bodyHtml, extraCss = '') {
 const PD = (n) => Number(n || 0).toLocaleString(undefined,
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// small HTML escaper for printing injected names
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 // ---------- Statement of Account: invoices + payments, running balance, aging ----------
 async function printSOA(customerName) {
   const [sales, payments, customers] = await Promise.all([
@@ -477,16 +480,25 @@ async function printSOA(customerName) {
     payments.filter((p) => p.sale_id === s.id).forEach((p) => events.push({
       date: String(p.date).slice(0, 10), sort: 1,
       part: `Payment — ${s.sales_no}`, ref: p.or_no ? `OR ${p.or_no}` : '—',
-      charge: 0, credit: Number(p.amount) }));
+      charge: 0, credit: Number(p.amount),
+      signature: p.signature || null, payer_name: p.payer_name || null }));
   });
   events.sort((a, b) => a.date.localeCompare(b.date) || a.sort - b.sort);
   let bal = 0;
   const rows = events.map((e) => {
     bal += e.charge - e.credit;
-    return `<tr><td>${e.date}</td><td>${e.part}</td><td>${e.ref}</td>
+    let r = `<tr><td>${e.date}</td><td>${e.part}</td><td>${e.ref}</td>
       <td class="num">${e.charge ? PD(e.charge) : ''}</td>
       <td class="num">${e.credit ? PD(e.credit) : ''}</td>
       <td class="num">${PD(bal)}</td></tr>`;
+    if (e.signature) {
+      r += `<tr><td colspan="6" style="padding:8px 10px;background:#f9f9f9">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="min-width:120px;font-size:12px;color:#333"><strong>Payer:</strong> ${esc(e.payer_name || '')}</div>
+          <div style="flex:1">${e.signature ? `<img src="${e.signature}" style="height:48px;" alt="signature">` : ''}</div>
+        </div></td></tr>`;
+    }
+    return r;
   }).join('');
   // aging on open balances (by invoice due date, falling back to invoice date)
   const today = new Date().toISOString().slice(0, 10);

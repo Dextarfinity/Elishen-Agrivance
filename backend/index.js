@@ -532,14 +532,14 @@ app.get('/api/payments', wrap(async (req, res) => {
 
 // Record a payment against an invoice (ledger row + refresh cached amount_paid)
 app.post('/api/sales/:id/payments', wrap(async (req, res) => {
-  const { amount, account_id, date, or_no, notes } = req.body;
+  const { amount, account_id, date, or_no, notes, payer_name, signature } = req.body;
   if (!amount) return res.status(400).json({ error: 'amount required' });
   try {
     await q(
-      `INSERT INTO payments (sale_id, date, amount, account_id, or_no, notes)
-       VALUES ($1,$2,$3,$4,$5,$6)`,
+      `INSERT INTO payments (sale_id, date, amount, account_id, or_no, notes, payer_name, signature)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
       [req.params.id, date || new Date().toISOString().slice(0, 10),
-       amount, account_id ?? null, or_no || null, notes ?? null]);
+       amount, account_id ?? null, or_no || null, notes ?? null, payer_name ?? null, signature ?? null]);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: `OR No. "${or_no}" is already used` });
     throw e;
@@ -551,16 +551,16 @@ app.post('/api/sales/:id/payments', wrap(async (req, res) => {
 
 // Edit a payment (OR No. added later from the booklet, date/amount/account fixes)
 app.put('/api/payments/:id', wrap(async (req, res) => {
-  const { amount, account_id, date, or_no, notes, version } = req.body;
+  const { amount, account_id, date, or_no, notes, payer_name, signature, version } = req.body;
   if (!amount) return res.status(400).json({ error: 'amount required' });
   let rows;
   try {
     ({ rows } = await q(
       `UPDATE payments SET date = $2, amount = $3, account_id = $4, or_no = $5, notes = $6,
-              version = version + 1
-       WHERE id = $1 AND ($7::int IS NULL OR version = $7::int) RETURNING sale_id`,
+              payer_name = $7, signature = $8, version = version + 1
+       WHERE id = $1 AND ($9::int IS NULL OR version = $9::int) RETURNING sale_id`,
       [req.params.id, date || new Date().toISOString().slice(0, 10),
-       amount, account_id ?? null, or_no || null, notes ?? null, version ?? null]));
+       amount, account_id ?? null, or_no || null, notes ?? null, payer_name ?? null, signature ?? null, version ?? null]));
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: `OR No. "${or_no}" is already used` });
     throw e;

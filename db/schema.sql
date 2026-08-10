@@ -324,3 +324,7 @@ CREATE INDEX idx_expenses_date    ON expenses(date);
 CREATE INDEX idx_purchases_item   ON purchases(item_id);
 
 COMMIT;
+
+-- Add e-signature support for payments: payer name and signature image (data URL)
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS payer_name text;
+ALTER TABLE payments ADD COLUMN IF NOT EXISTS signature text;

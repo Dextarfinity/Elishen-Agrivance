@@ -381,7 +381,7 @@ function wireSalesActions() {
   });
   document.querySelectorAll('[data-editsale]').forEach((b) =>
     b.onclick = () => startEditSale(Number(b.dataset.editsale)));
-  document.querySelectorAll('[data-editpay]').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('[data-editpay]').forEach((b) => b.onclick = () => {
     const p = (window._payRows || []).find((x) => x.id === Number(b.dataset.editpay));
     const modal = document.getElementById('payEditModal'), form = document.getElementById('payEditForm');
     if (!p || !modal || !form) return;
@@ -391,6 +391,9 @@ function wireSalesActions() {
     form.amount.value = Number(p.amount);
     form.account_id.value = p.account_id ?? '';
     form.notes.value = p.notes ?? '';
+    form.payer_name.value = p.payer_name ?? p.received_by ?? '';
+    const sigInput = form.querySelector('[name=signature]');
+    if (sigInput) sigInput.value = p.signature || '';
     form.dataset.version = p.version ?? '';
     document.getElementById('payEditTitle').textContent =
       `Edit payment — ${p.sales_no} · ${p.customer}`;
@@ -1401,6 +1404,7 @@ function wire(view) {
           await api.post(`/api/sales/${f.sale_id}/payments`, {
             date: f.date, amount: Number(f.amount),
             account_id: f.account_id || null, or_no: f.or_no || null, notes: f.notes || null,
+            payer_name: f.payer_name || null, signature: f.signature || null,
           });
           show('payments');
         } catch (err) {
@@ -1423,6 +1427,25 @@ function wire(view) {
           } catch {}
         }, 350);
       });
+      // signature capture for payments
+      const paySigPreview = document.getElementById('paySigPreview');
+      const paySigCapture = document.getElementById('paySigCapture');
+      const paySigClear = document.getElementById('paySigClear');
+      const sigInput = pf.querySelector('[name=signature]');
+      const renderPaySig = () => {
+        paySigPreview.innerHTML = sigInput.value
+          ? `<img src="${sigInput.value}" style="height:44px" alt="signature"><small style="color:var(--ink-2)">${pf.payer_name.value || ''}</small>`
+          : '<small style="color:var(--ink-2)">No signature captured yet.</small>';
+      };
+      if (paySigCapture) paySigCapture.onclick = async () => {
+        const r = await openSignPad({ title: 'Payment — payer signs here', name: pf.payer_name.value, askName: true });
+        if (!r) return;
+        if (r.name) pf.payer_name.value = r.name;
+        if (r.signature) sigInput.value = r.signature;
+        renderPaySig();
+      };
+      if (paySigClear) paySigClear.onclick = () => { sigInput.value = ''; renderPaySig(); };
+      renderPaySig();
     }
     // edit-payment modal (add the OR No. from the booklet later, fix date/amount)
     const pem = document.getElementById('payEditModal'), pef = document.getElementById('payEditForm');
@@ -1450,12 +1473,32 @@ function wire(view) {
           await api.put(`/api/payments/${f.id}`, {
             date: f.date, amount: Number(f.amount),
             account_id: f.account_id || null, or_no: f.or_no || null, notes: f.notes || null,
+            payer_name: f.payer_name || null, signature: f.signature || null,
             version: pef.dataset.version ? Number(pef.dataset.version) : undefined,
           });
           pem.classList.add('hidden');
           show('payments');
         } catch (err) { alert('Error: ' + err.message); }
       };
+      // edit modal signature capture
+      const payEditSigPreview = document.getElementById('payEditSigPreview');
+      const payEditSigCapture = document.getElementById('payEditSigCapture');
+      const payEditSigClear = document.getElementById('payEditSigClear');
+      const pefSigInput = pef.querySelector('[name=signature]');
+      const renderPayEditSig = () => {
+        payEditSigPreview.innerHTML = pefSigInput.value
+          ? `<img src="${pefSigInput.value}" style="height:44px" alt="signature"><small style="color:var(--ink-2)">${pef.payer_name.value || ''}</small>`
+          : '<small style="color:var(--ink-2)">No signature captured yet.</small>';
+      };
+      if (payEditSigCapture) payEditSigCapture.onclick = async () => {
+        const r = await openSignPad({ title: 'Payment — payer signs here', name: pef.payer_name.value, askName: true });
+        if (!r) return;
+        if (r.name) pef.payer_name.value = r.name;
+        if (r.signature) pefSigInput.value = r.signature;
+        renderPayEditSig();
+      };
+      if (payEditSigClear) payEditSigClear.onclick = () => { pefSigInput.value = ''; renderPayEditSig(); };
+      renderPayEditSig();
     }
   }
 
