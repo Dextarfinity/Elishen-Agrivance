@@ -359,7 +359,7 @@ async function show(view) {
     wire(view);
     wireCrud();
     wireSalesActions();
-    injectPrintButton();
+    if (typeof window.injectPrintButton === 'function') window.injectPrintButton();
     if (dot) {
       dot.textContent = `Live · synced ${new Date().toLocaleTimeString()}`;
       dot.classList.remove('stale');
@@ -2483,7 +2483,7 @@ async function softRefresh() {
       const sx = window.scrollX, sy = window.scrollY;
       main.innerHTML = html;
       wire(view);
-      injectPrintButton();
+      if (typeof window.injectPrintButton === 'function') window.injectPrintButton();
       window.scrollTo(sx, sy);
       touched = true;
     } else {

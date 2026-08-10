@@ -186,6 +186,16 @@ CREATE TABLE IF NOT EXISTS financial_allocations (       -- Financial Allocation
 -- Reporting views (replaces dashboards / derived tabs)
 -- ============================================================
 
+DROP VIEW IF EXISTS v_vendor_performance;
+DROP VIEW IF EXISTS v_sales_tax;
+DROP VIEW IF EXISTS v_rep_commissions;
+DROP VIEW IF EXISTS v_monthly_summary;
+DROP VIEW IF EXISTS v_monthly_item_sales;
+DROP VIEW IF EXISTS v_item_stock;
+DROP VIEW IF EXISTS v_ar_by_customer;
+DROP VIEW IF EXISTS v_accounts_receivable;
+DROP VIEW IF EXISTS v_account_balances;
+
 -- ----- Inventory tab computed columns + Inventory Dashboard -----
 CREATE OR REPLACE VIEW v_item_stock AS
 SELECT
