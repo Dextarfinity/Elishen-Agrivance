@@ -4,8 +4,6 @@
 -- (19 tabs → 14 tables + reporting views)
 -- ============================================================
 
-BEGIN;
-
 -- ---------- Settings (Setup tab) ----------
 CREATE TABLE IF NOT EXISTS settings (
     key         text PRIMARY KEY,
@@ -323,8 +321,6 @@ CREATE INDEX IF NOT EXISTS idx_sales_customer   ON sales(UPPER(TRIM(customer)));
 CREATE INDEX IF NOT EXISTS idx_sale_items_item  ON sale_items(item_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_date    ON expenses(date);
 CREATE INDEX IF NOT EXISTS idx_purchases_item   ON purchases(item_id);
-
-COMMIT;
 
 -- Add e-signature support for payments: payer name and signature image (data URL)
 DO $$
