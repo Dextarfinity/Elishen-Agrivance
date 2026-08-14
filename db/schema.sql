@@ -45,9 +45,12 @@ CREATE TABLE IF NOT EXISTS accounts (                    -- Accounts tab (cash/b
     last_checked      date
 );
 
+-- items.alias is the warehouse short code (e.g. 'SI 2 (50KG)') staff use on order
+-- slips; it is optional — items without one show their full name everywhere.
 CREATE TABLE IF NOT EXISTS items (                       -- Inventory tab
     id                 serial PRIMARY KEY,
     name               text NOT NULL UNIQUE,
+    alias              text,                            -- warehouse short code
     sku                text UNIQUE,
     category           text,
     type               text NOT NULL DEFAULT 'Feed',   -- Feed/Supply/Treat/Product/Material
@@ -252,6 +255,8 @@ SELECT
         THEN 'Low Stock'
       ELSE 'In Stock'
     END                                                         AS status
+-- NOTE: the live view also carries deal, outright_rate, cod_rate, packaging and uom,
+-- added directly on the server; alias is joined on in /api/reports/item_stock instead.
 FROM items i
 LEFT JOIN (SELECT item_id, SUM(received_qty) AS received
            FROM purchases WHERE status NOT ILIKE '%cancel%'

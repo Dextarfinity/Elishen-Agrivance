@@ -91,6 +91,68 @@ async function bootstrapCis() {
 }
 bootstrapCis().catch((e) => console.error('CIS bootstrap failed:', e));
 
+// ---------- product aliases: the short codes the warehouse actually says ----------
+// Staff jot down "SI 2 (50KG)", not "Supremo Infinity 2 - Chick Grower Crumble".
+// The alias is a second name for the same item — nothing else changes, and items
+// without one (RobiChem and the rest) keep showing their full name everywhere.
+const ALIAS_SEED = [
+  ['Supremo Infinity Ready Mix - Grains + Pellets (RED) (25x1kg)', 'SI READY MIX (25KG)'],
+  ['Supremo Infinity 1 - Chick Booster Crumble (50KG)', 'SI 1 (50KG)'],
+  ['Supremo Infinity 2 - Chick Grower Crumble (50KG)', 'SI 2 (50KG)'],
+  ['Supremo Infinity 3 - Maintenance Pellets - 15% CP (50KG)', 'SI 3 (50KG)'],
+  ['Supremo Infinity 4 - Breeder Pellets (50KG)', 'SI 4 (50KG)'],
+  ['Supremo Infinity 2.1 - Developer - 3 Grains (50KG)', 'SI 2.1 (50KG)'],
+  ['Supremo Infinity Super Conditioner (25KG)', 'SI 1 12 KINDS (50KG)'],
+  ['Supremo Infinity Power Concentrate (25KG)', 'SI 1 8 KINDS (50KG)'],
+  ['Supremo Infinity Ready Mix - Grains + Pellets (RED) (50kg)', 'SI READY MIX (50KG)'],
+  ['Supremo Infinity 1 Booster (25x1kg)', 'SI 1 (25X1KG)'],
+  ['Supremo Infinity 2 Grower (25x1kg)', 'SI 2 (25X1KG)'],
+  ['Supremo Infinity 4 Breeder (25x1kg)', 'SI 4 (25X1KG)'],
+  ['Supremo Infinity 2.1 Developer + (25x1kg)', 'SI 2.1 (25X1KG)'],
+  // this one is spelled with and without "Fortifier" on different machines —
+  // whichever row exists takes the code, the unique-alias guard blocks a second
+  ['Supremo Infinity Fortifier 32 Pellets - 32% CP (25x1kg)', 'SI 32 (25X1KG)'],
+  ['Supremo Infinity 32 Pellets - 32% CP (25x1kg)', 'SI 32 (25X1KG)'],
+  ['Supremo Infinity 23 Conditioning (25x1kg)', 'SI 23 (25X1KG)'],
+  ['Supremo Infinity Ready Mix red (25x1kg)', 'SI READY MIX (25X1KG)'],
+  ['Topbreed Dog Adult Mini (5KG)', 'TB DOGMEAL ADULT MINI (5KG)'],
+  ['Topbreed Cat Adult (5KG)', 'TB CATMEAL ADULT (5KG)'],
+  ['Topbreed Cat Adult (20KG)', 'TB CATMEAL ADULT (20KG)'],
+  ['Topbreed Dog Adult Mini (20KG)', 'TB DOGMEAL ADULT MINI (20KG)'],
+  ['Topbreed Dog Adult (20KG)', 'TB DOGMEAL ADULT (20KG)'],
+  ['Topbreed Dog Adult (5KG)', 'TB DOGMEAL ADULT (5KG)'],
+  ['Topbreed Dog Puppy (20KG)', 'TB PUPPY MEAL (20KG)'],
+  ['Top Care CAT LITTER Coffee (10L)', 'CAT LITTER COFFEE'],
+  ['Top Care CAT LITTER Lavander (10L)', 'CAT LITTER LAVENDER'],
+  ['Stargain Starter (50KG)', 'SG STARTER'],
+  ['Stargain Finisher (50KG)', 'SG FINISHER'],
+  ['Stargain Grower (50KG)', 'SG GROWER'],
+  ['Stargain Breeder (50KG)', 'SG BREEDER'],
+  ['Stargain Lactating (50KG)', 'SG LACTATING'],
+  ['Topbreed Creamy Treats (Tuna Flavor) .2g / 4 sticks/ ??', 'TB CREAMY TREATS TUNA 12G X 4 STICK'],
+  ['Topbreed TopTreats (Beef) 70gx12x4', 'TB TOPTREATS BEEF 70GX12X4'],
+];
+async function bootstrapAliases() {
+  await pool.query('ALTER TABLE items ADD COLUMN IF NOT EXISTS alias text');
+  // one code, one product — a duplicate alias would send pickers to the wrong bag
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS items_alias_ux
+    ON items (UPPER(TRIM(alias))) WHERE alias IS NOT NULL AND TRIM(alias) <> ''`);
+  // NOTE: v_item_stock is deliberately left alone. The live view carries columns the
+  // sale picker needs (deal, outright_rate, cod_rate, packaging, uom); the stock report
+  // joins the alias on instead — see the /api/reports/item_stock route below.
+  // seed the codes from the warehouse list, never overwriting one typed in the app
+  let seeded = 0;
+  for (const [name, alias] of ALIAS_SEED) {
+    const { rowCount } = await pool.query(
+      `UPDATE items SET alias = $2 WHERE name = $1 AND (alias IS NULL OR TRIM(alias) = '')
+       AND NOT EXISTS (SELECT 1 FROM items x WHERE UPPER(TRIM(x.alias)) = UPPER(TRIM($2)))`,
+      [name, alias]);
+    seeded += rowCount;
+  }
+  if (seeded) console.log(`Aliases: set ${seeded} product alias(es).`);
+}
+bootstrapAliases().catch((e) => console.error('Alias bootstrap failed:', e));
+
 // Behind Cloudflare Tunnel every req.ip is localhost — prefer the edge-provided
 // client IP for rate limiting and audit trails (LAN hits fall back to req.ip).
 const clientIp = (req) => req.get('cf-connecting-ip') || req.ip;
@@ -303,7 +365,7 @@ const TABLES = {
   vendors:               ['name', 'contact_name', 'phone', 'email', 'address', 'country', 'notes'],
   accounts:              ['name', 'beginning_balance', 'last_checked'],
   sales_reps:            ['name', 'commission_rate'],
-  items:                 ['name', 'sku', 'category', 'type', 'initial_stock', 'minimum_stock',
+  items:                 ['name', 'alias', 'sku', 'category', 'type', 'initial_stock', 'minimum_stock',
                           'sales_price', 'cost', 'preferred_vendor_id', 'units_in_purchase',
                           'promotion', 'notes', 'deal', 'outright_rate', 'cod_rate',
                           'packaging', 'uom', 'price_breakdown'],
@@ -396,6 +458,14 @@ for (const [table, cols] of Object.entries(TABLES)) {
   }));
 }
 
+// stock list carries the warehouse alias alongside the view's own columns
+// (registered BEFORE the generic loop so this route wins)
+app.get('/api/reports/item_stock', wrap(async (req, res) => {
+  const { rows } = await q(
+    'SELECT v.*, i.alias FROM v_item_stock v JOIN items i ON i.id = v.id');
+  res.json(rows);
+}));
+
 // ---------- reporting views ----------
 for (const view of VIEWS) {
   app.get(`/api/reports/${view.replace(/^v_/, '')}`, wrap(async (req, res) => {
@@ -415,7 +485,7 @@ app.get('/api/sales', wrap(async (req, res) => {
   const { rows } = await q(`
     SELECT s.*, dr.dr_no, dr.status AS delivery_status,
            COALESCE(json_agg(json_build_object(
-             'id', si.id, 'item_id', si.item_id, 'item', i.name,
+             'id', si.id, 'item_id', si.item_id, 'item', i.name, 'alias', i.alias,
              'qty', si.qty, 'unit_price', si.unit_price, 'discount', si.discount,
              'total_price', si.total_price, 'promo', si.promo,
              'uom', i.uom, 'packaging', i.packaging

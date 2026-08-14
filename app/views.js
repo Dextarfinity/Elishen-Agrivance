@@ -4,6 +4,23 @@ const fmt = (n) => (n == null ? '-' :
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const d10 = (v) => (v ? esc(String(v).slice(0, 10)) : '-');
 
+// ---- product aliases: the shorthand the warehouse writes on order slips ----
+// "SI 2 (50KG)" instead of "Supremo Infinity 2 - Chick Grower Crumble". Items
+// with no alias (RobiChem and the rest) simply keep showing their full name.
+const aliasOf = (i) => String(i?.alias ?? '').trim();
+// short, for tight columns and dropdowns
+const itemLabel = (i) => aliasOf(i) || String(i?.name ?? '');
+// alias first, full name after — for pickers and forms where both help
+const itemLabelFull = (i) => (aliasOf(i) ? `${aliasOf(i)} — ${i.name}` : String(i?.name ?? ''));
+// alias as a badge with the full name beside it (HTML, already escaped)
+const itemLabelHtml = (i) => (aliasOf(i)
+  ? `<b>${esc(aliasOf(i))}</b><br><small style="color:var(--ink-2)">${esc(i.name ?? '')}</small>`
+  : esc(i?.name ?? ''));
+window.aliasOf = aliasOf;
+window.itemLabel = itemLabel;
+window.itemLabelFull = itemLabelFull;
+window.itemLabelHtml = itemLabelHtml;
+
 // ---- paginated table renderer (shared by every list in the system) ----
 window._pg = window._pg || {};        // per-table pagination state (survives refreshes)
 window._tblCache = {};                // rows/cols per table key, for repaging + print
@@ -407,7 +424,8 @@ const views = {
       { key: 'date', label: 'Date', render: (r) => d10(r.date) },
       { key: 'sales_no', label: 'Invoice' },
       { key: 'customer', label: 'Customer' },
-      { key: 'items', label: 'Items', render: (r) => esc(r.items.map((i) => `${i.item}×${Number(i.qty)}`).join(', ')) },
+      { key: 'items', label: 'Items', render: (r) => esc(r.items
+          .map((i) => `${aliasOf(i) || i.item}×${Number(i.qty)}`).join(', ')) },
       { key: 'total', label: 'Total', num: 1, render: (r) => fmt(r.total) },
       { key: 'amount_paid', label: 'Paid', num: 1, render: (r) => fmt(r.amount_paid) },
       { key: 'balance', label: 'Balance', num: 1, render: (r) => fmt(r.total - r.amount_paid) },
@@ -917,7 +935,7 @@ const views = {
     ]);
     const stockBy = Object.fromEntries(stock.map((s) => [s.id, s]));
     const vendMap = lookupMap(vendors);
-    const itemOpts = items.map((i) => ({ value: i.id, label: i.name }));
+    const itemOpts = items.map((i) => ({ value: i.id, label: itemLabelFull(i) }));
     const itemMap = lookupMap(itemOpts);
     const bom = await api.get('/api/bom_lines');
     // FEFO expiry alerts: received batches expiring within 60 days (or already past)
@@ -952,6 +970,7 @@ const views = {
         title: `Items (${items.length})`, endpoint: '/api/items', rows: items,
         fields: [
           { name: 'name', label: 'Item name', required: true },
+          { name: 'alias', label: 'Alias (warehouse short code, e.g. SI 2 (50KG))' },
           { name: 'sku', label: 'SKU' },
           { name: 'category', label: 'Category' },
           { name: 'type', label: 'Type', type: 'select', options: ['Feed', 'Supply', 'Treat', 'Product', 'Material'].map((t) => ({ value: t, label: t })) },
@@ -972,6 +991,8 @@ const views = {
           { name: 'notes', label: 'Notes' },
         ],
         columns: [
+          { key: 'alias', label: 'Alias', render: (r) => aliasOf(r)
+              ? `<b>${esc(aliasOf(r))}</b>` : '<small style="color:var(--ink-3)">—</small>' },
           { key: 'name', label: 'Item' }, { key: 'category', label: 'Category' },
           { key: 'packaging', label: 'Packaging', render: (r) => esc(r.packaging ?? '') },
           { key: 'uom', label: 'UoM', render: (r) => esc(r.uom ?? '') },
@@ -1060,7 +1081,7 @@ const views = {
           <thead><tr><th>Item</th><th>SKU</th><th>System on hand</th><th>Actual count</th><th>Adjustment</th><th>Minimum stock</th></tr></thead>
           <tbody>
             ${stock.map((s, i) => `<tr>
-              <td>${esc(s.name)}</td><td>${esc(s.sku ?? '')}</td>
+              <td>${itemLabelHtml(s)}</td><td>${esc(s.sku ?? '')}</td>
               <td class="num">${Number(s.on_hand)}</td>
               <td><input type="number" step="any" class="stockcount" data-ix="${i}" placeholder="—"></td>
               <td class="num adjcell" id="adj${i}">—</td>
@@ -1078,11 +1099,13 @@ const views = {
 
   // ================= Purchases (CRUD + reorder suggestions + vendors + performance) =================
   async purchases() {
-    const [rows, itemOpts, vendOpts, acctOpts, perf, vendors, reorder] = await Promise.all([
-      api.get('/api/purchases'), opts('/api/items'), opts('/api/vendors'),
+    const [rows, allItems, vendOpts, acctOpts, perf, vendors, reorder] = await Promise.all([
+      api.get('/api/purchases'), api.get('/api/items'), opts('/api/vendors'),
       opts('/api/accounts'), api.get('/api/reports/vendor_performance'), api.get('/api/vendors'),
       api.get('/api/reports/reorder'),
     ]);
+    // receiving stock is warehouse work — show the code they know, then the full name
+    const itemOpts = allItems.map((i) => ({ value: i.id, label: itemLabelFull(i) }));
     const itemMap = lookupMap(itemOpts), vendMap = lookupMap(vendOpts), acctMap = lookupMap(acctOpts);
     window._reorder = reorder;
     // group suggestions by vendor

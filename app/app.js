@@ -748,7 +748,7 @@ async function startEditSale(id) {
   body.innerHTML = (await views.newsale()).replace('<h2>New Sale</h2>', '');
   window._editSale = { id: s.id, version: s.version };
   window._saleData.lines.push(...(s.items || []).map((it) => ({
-    item_id: it.item_id, name: it.item, qty: Number(it.qty),
+    item_id: it.item_id, name: it.item, alias: it.alias, qty: Number(it.qty),
     unit_price: Number(it.unit_price), discount: Number(it.discount) || 0,
     promo: !!it.promo,
   })));
@@ -1001,10 +1001,10 @@ function wire(view) {
         return;
       }
       if (ask && !confirm(
-        `Promo ${deal.label} on ${item.name}:\nadd ${freeDue - already} FREE unit(s)? ` +
+        `Promo ${deal.label} on ${itemLabelFull(item)}:\nadd ${freeDue - already} FREE unit(s)? ` +
         `(free goods paid by URC marketing — they still deduct from inventory)`)) return;
       if (promoLine) promoLine.qty = freeDue;
-      else lines.push({ item_id: itemId, name: item.name, qty: freeDue,
+      else lines.push({ item_id: itemId, name: item.name, alias: item.alias, qty: freeDue,
                         unit_price: 0, discount: 0, promo: true });
       renderLines();
     };
@@ -1028,11 +1028,11 @@ function wire(view) {
         ? `<div class="tablewrap"><table><thead><tr><th>Item</th><th style="width:80px">Qty</th><th style="width:105px">Unit cost</th>
              <th style="width:95px">Discount</th><th style="width:95px">Net price</th><th>Amount</th><th></th></tr></thead><tbody>
            ${lines.map((l, i) => l.promo
-             ? `<tr><td>${l.name} <span class="badge green">PROMO — free, paid by URC marketing</span></td>
+             ? `<tr><td>${itemLabelHtml(l)} <span class="badge green">PROMO — free, paid by URC marketing</span></td>
              <td><input type="number" step="any" min="0" value="${l.qty}" data-editqty="${i}" style="width:70px"></td>
              <td class="num">0.00</td><td class="num">—</td><td class="num">0.00</td><td class="num">0.00</td>
              <td><button type="button" class="mini danger" data-rm="${i}">Remove</button></td></tr>`
-             : `<tr><td>${l.name}</td>
+             : `<tr><td>${itemLabelHtml(l)}</td>
              <td><input type="number" step="any" min="0.001" value="${l.qty}" data-editqty="${i}" style="width:70px"></td>
              <td><input type="number" step="any" min="0" value="${l.unit_price}" data-editprice="${i}" style="width:95px"></td>
              <td><input type="number" step="any" min="0" value="${l.discount || 0}" data-editdisc="${i}" style="width:85px"></td>
@@ -1066,6 +1066,7 @@ function wire(view) {
       const ql = q.toLowerCase();
       const rows = window._saleData.items.filter((i) =>
         !ql || i.name.toLowerCase().includes(ql) ||
+        String(i.alias || '').toLowerCase().includes(ql) ||   // warehouse short code
         String(i.sku || '').toLowerCase().includes(ql) ||
         String(i.category || '').toLowerCase().includes(ql));
       const tierPrice = tierPriceOf;
@@ -1073,7 +1074,7 @@ function wire(view) {
         <table><thead><tr><th>Item</th><th>Category</th><th style="text-align:right">Price (tier)</th>
           <th>Deal</th><th style="text-align:right">Stock</th><th style="width:80px">Qty</th><th></th></tr></thead><tbody>
         ${rows.map((i) => `<tr>
-          <td>${i.name}</td><td>${i.category ?? '-'}</td>
+          <td>${itemLabelHtml(i)}</td><td>${i.category ?? '-'}</td>
           <td class="num">${i.sales_price != null ? tierPrice(i).toFixed(2) : '—'}</td>
           <td>${(i.dealer_deal || i.deal) ? `<span class="badge green">${i.dealer_deal || i.deal}</span>` : ''}
             ${i.exp_soon ? `<span class="badge amber" title="Sell this stock first (FEFO)">EXP ${i.exp_soon}</span>` : ''}</td>
@@ -1087,7 +1088,7 @@ function wire(view) {
         const existing = lines.find((l) => l.item_id === item.id && !l.promo);
         if (existing) existing.qty += qty;
         else lines.push({
-          item_id: item.id, name: item.name, qty,
+          item_id: item.id, name: item.name, alias: item.alias, qty,
           unit_price: listPriceOf(item),
           discount: Math.round((listPriceOf(item) - tierPrice(item)) * 100) / 100,
         });

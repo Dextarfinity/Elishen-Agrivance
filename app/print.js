@@ -375,7 +375,7 @@ async function printDeliveryReceipt(deliveryId) {
           <td class="num">${ix + 1}</td>
           <td class="num">${Number(it.qty)}</td>
           <td>${it.uom ?? ''}</td>
-          <td>${it.item}${it.packaging ? ' — ' + it.packaging : ''}${it.promo
+          <td>${it.alias ? `<b>${esc(it.alias)}</b> — ` : ''}${it.item}${it.packaging ? ' — ' + it.packaging : ''}${it.promo
             ? ' <span class="free">(FREE — promo, paid by URC marketing)</span>'
             : Number(it.unit_price) === 0 ? ' <span class="free">(FREE — deal)</span>' : ''}</td>
           <td class="num">${P(it.unit_price)}</td>
