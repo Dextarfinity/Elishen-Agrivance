@@ -458,7 +458,147 @@ const PD = (n) => Number(n || 0).toLocaleString(undefined,
   { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // small HTML escaper for printing injected names
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+if (typeof window.esc !== 'function') {
+  window.esc = (s) => String(s ?? '').replace(/[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+
+// ---------- Customer Information Sheet: a faithful reprint of the paper form ----------
+// Values sit on ruled lines exactly where they sit on the printed template, so a
+// filled sheet and a blank one are the same document.
+async function printCIS(id) {
+  const s = await api.get(`/api/cis/${id}`);
+  const isFarm = s.sheet_type === 'farm';
+  const noun = isFarm ? 'Farm' : 'Store';
+  const E = (v) => esc(v ?? '');
+  // a value on a ruled line; empty prints as a blank line to be filled by hand
+  const line = (v, w = 'auto') => `<span class="ln" style="min-width:${w}">${E(v)}</span>`;
+  const box = (on) => `<span class="bx">${on ? '&#10003;' : ''}</span>`;
+  const parts = [['no', 'No.'], ['street', 'Street'], ['purok', 'Purok'], ['barangay', 'Barangay'],
+    ['town', 'Town'], ['city', 'City'], ['province', 'Province']];
+  const addrBlock = (prefix) => `
+    <div class="addr">${parts.map(([k]) => `<span class="ln">${E(s[`${prefix}_${k}`])}</span>`).join('')}</div>
+    <div class="addr caps">${parts.map(([, lab]) => `<span>${lab}</span>`).join('')}</div>`;
+  const nameBlock = (prefix, n) => `
+    <div class="nm"><span class="no">${n}.</span>
+      <span class="ln">${E(s[`${prefix}_surname`])}</span>
+      <span class="ln">${E(s[`${prefix}_given`])}</span>
+      <span class="ln">${E(s[`${prefix}_middle`])}</span></div>
+    <div class="nm caps"><span class="no"></span><span>Surname</span><span>Given Name</span><span>Middle Name</span></div>`;
+  const spec = Array.isArray(s.specimens) ? s.specimens : [];
+  const specSlot = (i) => {
+    const sp = spec[i] || {};
+    return `<div class="sp"><span class="no">${i + 1}.</span>
+      <span class="ln sig">${sp.signature ? `<img src="${sp.signature}" alt="">` : ''}
+        ${sp.name ? `<i>${E(sp.name)}</i>` : ''}</span></div>`;
+  };
+
+  const html = `<!doctype html><html><head><meta charset="utf-8">
+  <title>Customer Information Sheet — ${E(s.account_name)}</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    body { font-family: "Segoe UI", Arial, sans-serif; color: #000; font-size: 12px;
+           padding: 22px 30px 30px; }
+    .head { display: flex; gap: 16px; align-items: flex-start; }
+    .logo { font-family: Georgia, "Times New Roman", serif; font-size: 52px; font-weight: 800;
+            letter-spacing: -3px; line-height: .92; }
+    .logo .e { color: #1e5c28; } .logo .s { color: #e3a71f; }
+    .co { font-size: 19px; font-weight: 800; letter-spacing: .02em; }
+    .co-sub { font-size: 10.5px; line-height: 1.5; margin-top: 1px; }
+    h1 { text-align: center; font-size: 14px; letter-spacing: .04em; margin: 12px 0 16px;
+         text-transform: uppercase; }
+    .row { display: flex; align-items: flex-end; gap: 8px; margin-top: 9px; }
+    .lab { font-weight: 700; white-space: nowrap; }
+    .ln { flex: 1; border-bottom: 1px solid #000; padding: 0 4px 1px; min-height: 15px;
+          display: inline-block; }
+    .bx { display: inline-block; width: 17px; height: 15px; border: 1px solid #000;
+          text-align: center; line-height: 14px; margin: 0 2px; }
+    .addr { display: grid; grid-template-columns: .55fr .9fr .7fr 1fr .8fr .8fr .9fr; gap: 6px; }
+    .addr.caps { margin-top: 1px; }
+    .caps span { font-size: 9.5px; text-align: center; border: 0; }
+    .nm { display: grid; grid-template-columns: 16px 1fr 1fr 1fr; gap: 6px; margin-top: 8px;
+          align-items: end; }
+    .nm.caps { margin-top: 1px; }
+    .nm.caps span { font-size: 9.5px; text-align: center; }
+    .no { font-weight: 700; }
+    .sec { font-weight: 700; margin-top: 12px; }
+    .sp { display: grid; grid-template-columns: 16px 1fr; gap: 6px; align-items: end; margin-top: 12px; }
+    .sp .sig { min-height: 26px; position: relative; }
+    .sp .sig img { max-height: 24px; max-width: 150px; vertical-align: bottom; }
+    .sp .sig i { font-size: 9.5px; color: #333; font-style: normal; margin-left: 6px; }
+    .specs { display: grid; grid-template-columns: 1fr 1fr; gap: 0 34px; }
+    .certify { margin-top: 26px; font-size: 12px; }
+    .final { margin-top: 26px; text-align: center; }
+    .final .ln { display: block; max-width: 340px; margin: 0 auto; min-height: 30px; }
+    .final .ln img { max-height: 28px; }
+    .final small { display: block; margin-top: 3px; font-size: 10.5px; }
+    .foot { margin-top: 20px; font-size: 9px; color: #555; text-align: right; }
+    @media print { body { padding: 10mm 12mm; } .foot { color: #888; } }
+    @page { margin: 10mm; }
+  </style></head><body>
+    <div class="head">
+      <div class="logo"><span class="e">E</span><span class="s">S</span></div>
+      <div>
+        <div class="co">ELISHEN AGRIVANCE</div>
+        <div class="co-sub">Gracepatch, Blk 45 Alviola Village, Democrito Plaza Avenue,<br>
+          Butuan City, Philippines 8600<br>Mobile No. 09951039419</div>
+      </div>
+    </div>
+    <h1>Customer Information Sheet</h1>
+
+    <div class="row"><span class="lab">Account Name</span><span>:</span>${line(s.account_name)}</div>
+    <div class="row"><span class="lab">${noun} established on</span>${line(s.established_on)}
+      <span class="lab">Space Rented</span>${box(s.space_tenure === 'rented')}
+      <span class="lab">Owned</span>${box(s.space_tenure === 'owned')}</div>
+
+    <div class="row"><span class="lab">Complete ${noun} Address:</span></div>
+    ${addrBlock('addr')}
+
+    <div class="row"><span class="lab">Contact Number:</span>${line(s.contact_no)}</div>
+
+    <div class="sec">Owner's Name:</div>
+    ${nameBlock('owner1', 1)}
+    ${nameBlock('owner2', 2)}
+
+    <div class="sec">Residence Address:</div>
+    ${addrBlock('res')}
+    <div class="row"><span class="lab">Residential Owned</span>${box(s.res_tenure === 'owned')}
+      <span class="lab">Rented</span>${box(s.res_tenure === 'rented')}</div>
+
+    ${isFarm ? '' : `
+      <div class="sec">If corporation / cooperative</div>
+      <div class="sec" style="font-weight:400">Store Manager/OIC Name</div>
+      ${nameBlock('mgr1', 1)}
+      ${nameBlock('mgr2', 2)}
+      <div class="sec" style="font-weight:400">Complete Address:</div>
+      <div class="row"><span class="no">1.</span>${line(s.mgr1_address)}</div>
+      <div class="row"><span class="no">2.</span>${line(s.mgr2_address)}</div>`}
+
+    <div class="row"><span class="lab">Terms:</span>${line(s.terms, '150px')}
+      <span class="lab">Credit</span>${box(s.terms_credit)}
+      <span class="lab">Check</span>${box(s.terms_check)}</div>
+
+    <div class="row"><span class="lab">Bank Name:</span>${line(s.bank_name)}
+      <span class="lab">Branch:</span>${line(s.branch)}</div>
+
+    <div class="sec">Signature Specimen:</div>
+    <div class="specs">
+      <div>${specSlot(0)}${specSlot(1)}${specSlot(2)}</div>
+      <div>${specSlot(3)}${specSlot(4)}${specSlot(5)}</div>
+    </div>
+
+    <p class="certify">This is to certify that all information given is true and correct.</p>
+    <div class="final">
+      <span class="ln">${s.certified_signature ? `<img src="${s.certified_signature}" alt="">` : ''}</span>
+      <small>${E(s.certified_name)}</small>
+      <small>Customer's Signature Over Printed Name</small>
+    </div>
+    <div class="foot">Sheet #${s.id}${s.created_by ? ` · filed by ${E(s.created_by)}` : ''}
+      · printed ${new Date().toLocaleString()}</div>
+  </body></html>`;
+  openPrintPreview(html, `CIS_${String(s.account_name || 'sheet').replace(/[^\w\- ]+/g, '').replace(/\s+/g, '_')}`);
+}
+window.printCIS = printCIS;
 
 // ---------- Statement of Account: invoices + payments, running balance, aging ----------
 async function printSOA(customerName) {
@@ -725,4 +865,13 @@ function injectPrintButton() {
   btn.textContent = 'Print report';
   btn.onclick = printReport;
   h2.appendChild(btn);
+}
+
+// expose convenience globals and announce readiness so other scripts can bind
+try {
+  window.printReport = printReport;
+  window.saveReportPdf = saveReportPdf;
+  document.dispatchEvent(new Event('printReady'));
+} catch (e) {
+  // ignore in constrained runtimes
 }

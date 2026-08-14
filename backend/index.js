@@ -51,6 +51,46 @@ async function bootstrapAuth() {
 }
 bootstrapAuth().catch((e) => { console.error('Auth bootstrap failed:', e); process.exit(1); });
 
+// ---------- Customer Information Sheet: the paper form, field for field ----------
+// One sheet per store or farm account. Columns mirror the printed template so a
+// saved sheet reprints exactly, including the address broken into its parts.
+async function bootstrapCis() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS customer_info_sheets (
+      id             serial PRIMARY KEY,
+      customer_id    integer REFERENCES customers(id) ON DELETE SET NULL,
+      sheet_type     text NOT NULL DEFAULT 'store',      -- 'store' | 'farm'
+      account_name   text NOT NULL,
+      established_on text,
+      space_tenure   text,                               -- 'rented' | 'owned'
+      addr_no text, addr_street text, addr_purok text, addr_barangay text,
+      addr_town text, addr_city text, addr_province text,
+      contact_no text,
+      owner1_surname text, owner1_given text, owner1_middle text,
+      owner2_surname text, owner2_given text, owner2_middle text,
+      res_no text, res_street text, res_purok text, res_barangay text,
+      res_town text, res_city text, res_province text,
+      res_tenure     text,                               -- 'owned' | 'rented'
+      -- corporation / cooperative block (store sheets only)
+      mgr1_surname text, mgr1_given text, mgr1_middle text,
+      mgr2_surname text, mgr2_given text, mgr2_middle text,
+      mgr1_address text, mgr2_address text,
+      terms text,
+      terms_credit boolean NOT NULL DEFAULT false,
+      terms_check  boolean NOT NULL DEFAULT false,
+      bank_name text, branch text,
+      specimens          jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [{name, signature}] x6
+      certified_name     text,
+      certified_signature text,
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      version    integer NOT NULL DEFAULT 1
+    )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_cis_customer ON customer_info_sheets(customer_id)');
+}
+bootstrapCis().catch((e) => console.error('CIS bootstrap failed:', e));
+
 // Behind Cloudflare Tunnel every req.ip is localhost — prefer the edge-provided
 // client IP for rate limiting and audit trails (LAN hits fall back to req.ip).
 const clientIp = (req) => req.get('cf-connecting-ip') || req.ip;
@@ -204,6 +244,8 @@ const NON_ADMIN_ALLOWED = [
   [/^POST$/,   /^\/logout$/],                     // end own session
   [/^POST$/,   /^\/notifications\/seen$/],        // mark own notifications read
   [/^POST$/,   /^\/store_visits$/],               // field visit reports (reps' core duty)
+  [/^POST$/,   /^\/cis$/],                        // customer information sheet — anyone may file one
+  [/^PUT$/,    /^\/cis\/\d+$/],                   // ...and keep it up to date (deleting stays admin-only)
 ];
 
 // friendly transaction notices for the bell — the casual events, not an audit log
@@ -721,6 +763,87 @@ app.put('/api/customers/:id', wrap(async (req, res) => {
 }));
 app.delete('/api/customers/:id', wrap(async (req, res) => {
   const { rowCount } = await q('DELETE FROM customers WHERE id = $1', [req.params.id]);
+  res.json({ deleted: rowCount });
+}));
+
+// ---------- Customer Information Sheets (open to every signed-in user) ----------
+// The list stays light: signature images live only on the single-sheet fetch.
+const CIS_COLS = [
+  'customer_id', 'sheet_type', 'account_name', 'established_on', 'space_tenure',
+  'addr_no', 'addr_street', 'addr_purok', 'addr_barangay', 'addr_town', 'addr_city', 'addr_province',
+  'contact_no',
+  'owner1_surname', 'owner1_given', 'owner1_middle',
+  'owner2_surname', 'owner2_given', 'owner2_middle',
+  'res_no', 'res_street', 'res_purok', 'res_barangay', 'res_town', 'res_city', 'res_province',
+  'res_tenure',
+  'mgr1_surname', 'mgr1_given', 'mgr1_middle',
+  'mgr2_surname', 'mgr2_given', 'mgr2_middle', 'mgr1_address', 'mgr2_address',
+  'terms', 'terms_credit', 'terms_check', 'bank_name', 'branch',
+  'specimens', 'certified_name', 'certified_signature',
+];
+const cisValues = (b) => CIS_COLS.map((c) => {
+  const v = b[c];
+  if (c === 'specimens') return JSON.stringify(Array.isArray(v) ? v.slice(0, 6) : []);
+  if (c === 'terms_credit' || c === 'terms_check') return v === true;
+  if (c === 'customer_id') return v == null || v === '' ? null : Number(v);
+  return v == null || v === '' ? null : String(v);
+});
+
+app.get('/api/cis', wrap(async (req, res) => {
+  const { customer_id } = req.query;
+  const { rows } = await q(`
+    SELECT s.id, s.customer_id, s.sheet_type, s.account_name, s.established_on,
+           s.contact_no, s.terms, s.bank_name, s.branch, s.created_by, s.updated_at, s.version,
+           c.name AS customer_name,
+           CONCAT_WS(', ', NULLIF(s.addr_no,''), NULLIF(s.addr_street,''), NULLIF(s.addr_purok,''),
+                     NULLIF(s.addr_barangay,''), NULLIF(s.addr_town,''), NULLIF(s.addr_city,''),
+                     NULLIF(s.addr_province,'')) AS address,
+           TRIM(CONCAT_WS(' ', NULLIF(s.owner1_given,''), NULLIF(s.owner1_middle,''),
+                          NULLIF(s.owner1_surname,''))) AS owner_name
+    FROM customer_info_sheets s
+    LEFT JOIN customers c ON c.id = s.customer_id
+    ${customer_id ? 'WHERE s.customer_id = $1' : ''}
+    ORDER BY UPPER(s.account_name)`, customer_id ? [customer_id] : []);
+  res.json(rows);
+}));
+app.get('/api/cis/:id', wrap(async (req, res) => {
+  const { rows } = await q(`
+    SELECT s.*, c.name AS customer_name FROM customer_info_sheets s
+    LEFT JOIN customers c ON c.id = s.customer_id WHERE s.id = $1`, [req.params.id]);
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  res.json(rows[0]);
+}));
+app.post('/api/cis', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.account_name) return res.status(400).json({ error: 'Account name is required.' });
+  if (!['store', 'farm'].includes(b.sheet_type)) b.sheet_type = 'store';
+  const cols = [...CIS_COLS, 'created_by'];
+  const vals = [...cisValues(b), req._auth?.name || null];
+  const { rows } = await q(
+    `INSERT INTO customer_info_sheets (${cols.join(',')})
+     VALUES (${cols.map((_, i) => `$${i + 1}`).join(',')}) RETURNING *`, vals);
+  res.status(201).json(rows[0]);
+}));
+app.put('/api/cis/:id', wrap(async (req, res) => {
+  const b = req.body || {};
+  if (!b.account_name) return res.status(400).json({ error: 'Account name is required.' });
+  if (!['store', 'farm'].includes(b.sheet_type)) b.sheet_type = 'store';
+  const sets = CIS_COLS.map((c, i) => `${c} = $${i + 2}`).join(', ');
+  const { rows } = await q(
+    `UPDATE customer_info_sheets SET ${sets}, updated_at = now(), version = version + 1
+     WHERE id = $1 AND ($${CIS_COLS.length + 2}::int IS NULL OR version = $${CIS_COLS.length + 2}::int)
+     RETURNING *`,
+    [req.params.id, ...cisValues(b), b.version == null ? null : Number(b.version)]);
+  if (!rows.length) {
+    const { rows: ex } = await q('SELECT 1 FROM customer_info_sheets WHERE id = $1', [req.params.id]);
+    return res.status(ex.length ? 409 : 404).json({ error: ex.length
+      ? 'This sheet was changed by someone else while you were editing. Reopen it to see the latest version.'
+      : 'not found' });
+  }
+  res.json(rows[0]);
+}));
+app.delete('/api/cis/:id', wrap(async (req, res) => {
+  const { rowCount } = await q('DELETE FROM customer_info_sheets WHERE id = $1', [req.params.id]);
   res.json({ deleted: rowCount });
 }));
 

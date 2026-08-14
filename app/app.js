@@ -788,7 +788,160 @@ async function startEditSale(id) {
   f.tax_pct.dispatchEvent(new Event('input'));    // re-render lines + totals
 }
 
+// ---- Customer Information Sheets ----------------------------------------
+// Open to every signed-in user: no role gate here, and the buttons deliberately
+// avoid the ADMIN_CONTROLS selectors so applyRbacDom() leaves them in place.
+function openCisSheet(sheet, type) {
+  window._cisEdit = sheet || null;
+  window._cisType = type || (sheet && sheet.sheet_type) || 'store';
+  show('cisform');
+}
+// Jump straight to a customer's sheet — creating it pre-linked if none exists yet.
+async function openCisForCustomer(customerId, customerName) {
+  try {
+    const list = await api.get(`/api/cis?customer_id=${encodeURIComponent(customerId)}`);
+    if (list.length) return openCisSheet(await api.get(`/api/cis/${list[0].id}`));
+    openCisSheet({ customer_id: customerId, account_name: customerName || '', specimens: [] }, 'store');
+  } catch (e) { alert('Error: ' + e.message); }
+}
+function wireCisLinks() {
+  document.querySelectorAll('[data-cissheet]').forEach((b) => b.onclick = (e) => {
+    e.preventDefault();
+    openCisForCustomer(b.dataset.cissheet, b.dataset.cisname || '');
+  });
+  document.querySelectorAll('[data-cisprint]').forEach((b) => b.onclick = () => {
+    if (typeof window.printCIS === 'function') window.printCIS(b.dataset.cisprint);
+    else alert('Print module not loaded yet — try again in a moment.');
+  });
+}
+function wireCisList() {
+  document.querySelectorAll('[data-cisnew]').forEach((b) => b.onclick = () =>
+    openCisSheet(null, b.dataset.cisnew));
+  document.querySelectorAll('[data-cisopen]').forEach((b) => b.onclick = async () => {
+    try { openCisSheet(await api.get(`/api/cis/${b.dataset.cisopen}`)); }
+    catch (e) { alert('Error: ' + e.message); }
+  });
+  document.querySelectorAll('[data-cisdel]').forEach((b) => b.onclick = async () => {
+    if (!confirm('Delete this information sheet? The customer record itself is not affected.')) return;
+    try { await api.del(`/api/cis/${b.dataset.cisdel}`); show('cis'); }
+    catch (e) { alert('Error: ' + e.message); }
+  });
+  document.querySelectorAll('[data-cisfilter]').forEach((b) => b.onclick = () => {
+    window._cisFilter = b.dataset.cisfilter; show('cis');
+  });
+  const s = document.getElementById('cisSearch');
+  if (s) {
+    let t;
+    s.oninput = () => { clearTimeout(t); t = setTimeout(() => {
+      window._cisSearch = s.value;
+      window._cisRefocus = true;          // the re-render replaces this input
+      show('cis');
+    }, 350); };
+    if (window._cisRefocus) {             // keep typing where the user left off
+      window._cisRefocus = false;
+      s.focus();
+      s.setSelectionRange(s.value.length, s.value.length);
+    }
+  }
+}
+function wireCisForm() {
+  const form = document.getElementById('cisForm');
+  if (!form) return;
+  const sheet = window._cisEdit || {};
+  // specimens live outside the form fields: name + optional drawn signature
+  window._cisSpec = Array.isArray(sheet.specimens) ? sheet.specimens.slice(0, 6) : [];
+  while (window._cisSpec.length < 6) window._cisSpec.push({ name: '', signature: null });
+  window._cisCertSig = sheet.certified_signature || null;
+
+  const renderSpecs = () => {
+    document.getElementById('cisSpecimens').innerHTML = window._cisSpec.map((sp, i) => `
+      <div class="cis-spec">
+        <span class="cis-num">${i + 1}.</span>
+        <input data-specname="${i}" value="${esc(sp.name || '')}" placeholder="printed name"
+          autocomplete="off">
+        ${sp.signature
+          ? `<span style="display:flex;gap:6px;align-items:center">
+               <img class="cis-sigimg" src="${sp.signature}" alt="specimen signature">
+               <button type="button" class="mini danger" data-specclear="${i}">×</button></span>`
+          : `<button type="button" class="mini" data-specsign="${i}">Sign</button>`}
+      </div>`).join('');
+    document.querySelectorAll('[data-specname]').forEach((inp) => inp.oninput = () => {
+      window._cisSpec[Number(inp.dataset.specname)].name = inp.value;
+    });
+    document.querySelectorAll('[data-specsign]').forEach((b) => b.onclick = async () => {
+      const i = Number(b.dataset.specsign);
+      const r = await openSignPad({ title: `Signature specimen ${i + 1}`, askName: true,
+        name: window._cisSpec[i].name || '' });
+      if (!r) return;
+      if (r.name) window._cisSpec[i].name = r.name;
+      if (r.signature) window._cisSpec[i].signature = r.signature;
+      renderSpecs();
+    });
+    document.querySelectorAll('[data-specclear]').forEach((b) => b.onclick = () => {
+      window._cisSpec[Number(b.dataset.specclear)].signature = null; renderSpecs();
+    });
+  };
+  const renderCert = () => {
+    document.getElementById('cisCertSig').innerHTML = window._cisCertSig
+      ? `<img class="cis-sigimg" src="${window._cisCertSig}" alt="customer signature">
+         <button type="button" class="mini danger" id="cisCertClear">Remove</button>`
+      : '<button type="button" class="mini" id="cisCertSign">Capture customer signature</button>';
+    const sign = document.getElementById('cisCertSign');
+    if (sign) sign.onclick = async () => {
+      const r = await openSignPad({ title: 'Customer’s signature over printed name',
+        askName: true, name: form.certified_name.value || '' });
+      if (!r) return;
+      if (r.name) form.certified_name.value = r.name;
+      window._cisCertSig = r.signature || null;
+      renderCert();
+    };
+    const clr = document.getElementById('cisCertClear');
+    if (clr) clr.onclick = () => { window._cisCertSig = null; renderCert(); };
+  };
+  renderSpecs();
+  renderCert();
+
+  // store ⇄ farm: the corporation block and the wording follow the paper forms
+  const applyType = () => {
+    const type = form.querySelector('[name=sheet_type]:checked')?.value || 'store';
+    const noun = type === 'farm' ? 'Farm' : 'Store';
+    document.getElementById('cisCorp').classList.toggle('hidden', type === 'farm');
+    const a = form.querySelector('[data-noun]');
+    if (a) a.textContent = `${noun} established on`;
+    const b = form.querySelector('[data-noun-addr]');
+    if (b) b.textContent = `Complete ${noun} Address`;
+  };
+  form.querySelectorAll('[name=sheet_type]').forEach((r) => r.onchange = applyType);
+  applyType();
+
+  const back = document.getElementById('cisBack');
+  if (back) back.onclick = () => { window._cisEdit = null; show('cis'); };
+
+  form.onsubmit = async (e) => {
+    e.preventDefault();
+    const body = Object.fromEntries(new FormData(form));
+    body.terms_credit = form.terms_credit.checked;
+    body.terms_check = form.terms_check.checked;
+    body.customer_id = body.customer_id || null;
+    // a specimen row counts only if it carries a name or an actual signature
+    body.specimens = window._cisSpec.filter((sp) => (sp.name || '').trim() || sp.signature);
+    body.certified_signature = window._cisCertSig;
+    const id = form.dataset.id;
+    if (id && form.dataset.version) body.version = Number(form.dataset.version);
+    try {
+      const saved = id ? await api.put(`/api/cis/${id}`, body) : await api.post('/api/cis', body);
+      window._cisEdit = null;
+      toast(id ? 'Information sheet updated.' : 'Information sheet saved.');
+      show('cis');
+      return saved;
+    } catch (err) { alert('Error: ' + err.message); }
+  };
+}
+
 function wire(view) {
+  if (view === 'cis') wireCisList();
+  if (view === 'cisform') wireCisForm();
+  wireCisLinks();                          // "Information sheet" buttons on other pages
   if (view === 'newsale') wireNewsale();   // standalone fallback (no nav entry anymore)
   // New Sale now lives in a modal on the Sales page; same form, same wiring
   if (view === 'sales') {
@@ -2462,6 +2615,7 @@ async function softRefresh() {
   if (document.querySelector('.drsel:checked')) return;        // never wipe an in-progress bulk selection
   if (window._view === 'newsale' && window._saleData?.lines.length) return;
   if (window._view === 'stocktake') return;   // never interrupt a stock count
+  if (window._view === 'cisform') return;     // never wipe a half-filled information sheet
 
   const dot = document.getElementById('syncdot');
   try {

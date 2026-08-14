@@ -107,6 +107,7 @@ function describeAudit(a) {
     recurring_expenses: 'a recurring expense', sales_reps: 'a sales rep',
     vendors: 'a vendor', bom_lines: 'a BOM line', profit_goals: 'a profit goal',
     change_pin: 'their own PIN', notifications: 'notifications',
+    cis: 'a customer information sheet',
   }[m[2]] || m[2];
   return `${verb} ${nice}`;
 }
@@ -455,9 +456,13 @@ const views = {
 
   // ================= Store Visits (rep field reports: 3 questions + photo + geotag) =================
   async visits() {
-    const [visits, customers] = await Promise.all([
-      api.get('/api/store_visits'), api.get('/api/customers')]);
+    const [visits, customers, cisRows] = await Promise.all([
+      api.get('/api/store_visits'), api.get('/api/customers'), api.get('/api/cis')]);
     window._visitCustomers = customers;
+    // a visited store is reachable as a customer record by name; from there the
+    // rep can open (or start) that store's information sheet without leaving the page
+    const custByName = new Map(customers.map((c) => [c.name.trim().toUpperCase(), c]));
+    const cisSheetIds = new Set(cisRows.map((s) => s.customer_id).filter((v) => v != null));
     const admin = isAdmin();
     const mine = admin ? visits
       : visits.filter((v) => v.user_name === (window._user && window._user.name));
@@ -494,7 +499,14 @@ const views = {
       ${table(mine, [
         { key: 'ts', label: 'Date / time', render: (r) => new Date(r.ts).toLocaleString() },
         ...(admin ? [{ key: 'user_name', label: 'Rep' }] : []),
-        { key: 'store_name', label: 'Store' },
+        { key: 'store_name', label: 'Store', render: (r) => {
+            const c = custByName.get(String(r.store_name || '').trim().toUpperCase());
+            return esc(r.store_name ?? '') + (c
+              ? `<br><button type="button" class="mini" data-cissheet="${c.id}"
+                   data-cisname="${esc(c.name)}">${cisSheetIds.has(c.id)
+                     ? 'Info sheet' : '+ Info sheet'}</button>`
+              : '');
+          } },
         { key: 'q_order', label: 'Order? Why / why not', render: (r) =>
             `<small>${esc((r.q_order || '').slice(0, 120))}</small>` },
         { key: 'q_products', label: 'Products on hand / selling', render: (r) =>
@@ -592,13 +604,16 @@ const views = {
 
   // ================= Accounts Receivable =================
   async receivables() {
-    const [byCust, allOpen, custRows, advances, advAccts] = await Promise.all([
+    const [byCust, allOpen, custRows, advances, advAccts, cisRows] = await Promise.all([
       api.get('/api/reports/ar_by_customer'),
       api.get('/api/reports/accounts_receivable'),
       api.get('/api/customers'),
       api.get('/api/customer_advances'),
       opts('/api/accounts'),
+      api.get('/api/cis'),
     ]);
+    // which customers already have an information sheet on file
+    const cisSheetIds = new Set(cisRows.map((s) => s.customer_id).filter((v) => v != null));
     window._advances = advances;
     const advMap = lookupMap(advAccts);
     // aging buckets across ALL open invoices
@@ -655,6 +670,12 @@ const views = {
         </select></label>
         <button type="button" class="mini add" id="soaBtn"
           title="Statement of Account — invoices, payments, running balance, aging">Print SOA</button>
+        ${(() => {
+          const c = custRows.find((x) => x.name.trim().toUpperCase() === (selRow?.customer || '').trim().toUpperCase());
+          return c ? `<button type="button" class="mini" data-cissheet="${c.id}" data-cisname="${esc(c.name)}"
+            title="Customer Information Sheet on file">${cisSheetIds.has(c.id)
+              ? 'Information sheet' : '+ Information sheet'}</button>` : '';
+        })()}
         <div class="card amber arcard"><span>${esc(selRow?.customer ?? 'Total')} — outstanding</span>
           <strong>${fmt(selRow?.balance ?? 0)}</strong></div>
         <div class="card arcard"><span>All customers</span>
@@ -708,8 +729,184 @@ const views = {
               ? '<span class="badge green">COD dealer</span>'
               : r.tier === 'outright' ? '<span class="badge green">Outright dealer</span>' : 'Retail' },
           { key: 'notes', label: 'Notes' },
+          { key: '_cis', label: 'Info sheet', render: (r) =>
+              `<button type="button" class="mini" data-cissheet="${r.id}"
+                 data-cisname="${esc(r.name)}">${cisSheetIds.has(r.id) ? 'Open sheet' : '+ Create'}</button>` },
         ],
       })}`;
+  },
+
+  // ================= Customer Information Sheet (every signed-in user) =================
+  // The printed form, digitized: one sheet per store or farm account.
+  async cis() {
+    const [sheets, customers] = await Promise.all([
+      api.get('/api/cis'), api.get('/api/customers')]);
+    window._cisCustomers = customers;
+    const ql = (window._cisSearch || '').toLowerCase();
+    const filter = window._cisFilter || 'all';
+    const rows = sheets.filter((s) =>
+      (filter === 'all' || s.sheet_type === filter)
+      && (!ql || [s.account_name, s.customer_name, s.address, s.owner_name, s.contact_no]
+        .some((v) => String(v || '').toLowerCase().includes(ql))));
+    const tab = (v, label) => `<button type="button" class="mini ${filter === v ? 'add' : ''}"
+      data-cisfilter="${v}">${label}</button>`;
+    return `<h2>Customer Information Sheets</h2>
+      <p class="empty" style="margin:4px 0 12px">The signed customer form, on file and reprintable.
+        Fill one out for every <b>store</b> or <b>farm</b> account. Any staff member may create and
+        update sheets.</p>
+      <div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+        <button type="button" class="primary" data-cisnew="store">+ New store sheet</button>
+        <button type="button" class="primary" data-cisnew="farm">+ New farm sheet</button>
+        <span style="flex:1"></span>
+        ${tab('all', `All (${sheets.length})`)}
+        ${tab('store', `Stores (${sheets.filter((s) => s.sheet_type === 'store').length})`)}
+        ${tab('farm', `Farms (${sheets.filter((s) => s.sheet_type === 'farm').length})`)}
+        <input id="cisSearch" placeholder="Search account, owner, address…" autocomplete="off"
+          value="${esc(window._cisSearch || '')}" style="max-width:260px">
+      </div>
+      ${table(rows, [
+        { key: 'sheet_type', label: 'Type', render: (r) => r.sheet_type === 'farm'
+            ? '<span class="badge green">Farm</span>' : '<span class="badge amber">Store</span>' },
+        { key: 'account_name', label: 'Account name', render: (r) => `<b>${esc(r.account_name)}</b>`
+            + (r.customer_name ? `<br><small style="color:var(--ink-2)">linked: ${esc(r.customer_name)}</small>` : '') },
+        { key: 'owner_name', label: 'Owner' },
+        { key: 'address', label: 'Address', render: (r) => `<small>${esc(r.address || '')}</small>` },
+        { key: 'contact_no', label: 'Contact' },
+        { key: 'terms', label: 'Terms' },
+        { key: 'updated_at', label: 'Updated', render: (r) => `<small>${r.updated_at
+            ? new Date(r.updated_at).toLocaleDateString() : ''}${r.created_by
+            ? `<br>by ${esc(r.created_by)}` : ''}</small>` },
+        { key: '_a', label: '', render: (r) => `<span class="actions">
+            <button type="button" class="mini" data-cisopen="${r.id}">Open</button>
+            <button type="button" class="mini printbtn" data-cisprint="${r.id}">Print</button>
+            ${isAdmin() ? `<button type="button" class="mini danger" data-cisdel="${r.id}">Delete</button>` : ''}
+          </span>` },
+      ])}`;
+  },
+
+  // ---- the sheet itself: laid out like the paper form it replaces ----
+  async cisform() {
+    const s = window._cisEdit || { sheet_type: window._cisType || 'store', specimens: [] };
+    const isFarm = s.sheet_type === 'farm';
+    const noun = isFarm ? 'Farm' : 'Store';
+    const customers = window._cisCustomers || await api.get('/api/customers');
+    window._cisCustomers = customers;
+    const v = (k) => esc(s[k] ?? '');
+    const addr = (prefix, labels) => `<div class="cis-addr">${labels.map(([k, lab]) =>
+      `<label class="cis-mini"><span>${lab}</span>
+        <input name="${prefix}_${k}" value="${v(`${prefix}_${k}`)}" autocomplete="off"></label>`).join('')}</div>`;
+    const ADDR_PARTS = [['no', 'No.'], ['street', 'Street'], ['purok', 'Purok'],
+      ['barangay', 'Barangay'], ['town', 'Town'], ['city', 'City'], ['province', 'Province']];
+    const nameRow = (prefix, n) => `<div class="cis-name">
+      <span class="cis-num">${n}.</span>
+      <label class="cis-mini"><span>Surname</span>
+        <input name="${prefix}_surname" value="${v(`${prefix}_surname`)}" autocomplete="off"></label>
+      <label class="cis-mini"><span>Given Name</span>
+        <input name="${prefix}_given" value="${v(`${prefix}_given`)}" autocomplete="off"></label>
+      <label class="cis-mini"><span>Middle Name</span>
+        <input name="${prefix}_middle" value="${v(`${prefix}_middle`)}" autocomplete="off"></label>
+    </div>`;
+    return `
+      <div class="cis-bar">
+        <button type="button" class="mini" id="cisBack">&lsaquo; Back to sheets</button>
+        <span style="flex:1"></span>
+        ${s.id ? `<button type="button" class="mini printbtn" data-cisprint="${s.id}">Print / PDF</button>` : ''}
+        <button type="submit" form="cisForm" class="primary">${s.id ? 'Save changes' : 'Save sheet'}</button>
+      </div>
+      <form id="cisForm" class="cis-sheet" data-id="${s.id || ''}" data-version="${s.version ?? ''}">
+        <div class="cis-head">
+          <div class="cis-logo"><span class="e">E</span><span class="s">S</span></div>
+          <div>
+            <div class="cis-co">ELISHEN AGRIVANCE</div>
+            <div class="cis-co-sub">Gracepatch, Blk 45 Alviola Village, Democrito Plaza Avenue,<br>
+              Butuan City, Philippines 8600<br>Mobile No. 09951039419</div>
+          </div>
+        </div>
+        <h3 class="cis-title">CUSTOMER INFORMATION SHEET</h3>
+        <div class="cis-typepick">
+          <label><input type="radio" name="sheet_type" value="store" ${isFarm ? '' : 'checked'}> Store</label>
+          <label><input type="radio" name="sheet_type" value="farm" ${isFarm ? 'checked' : ''}> Farm</label>
+          <span class="cis-hint">Switching changes which sections appear, exactly like the two paper forms.</span>
+        </div>
+
+        <label class="cis-line"><span class="cis-lab">Account Name</span>
+          <input name="account_name" value="${v('account_name')}" required autocomplete="off"></label>
+        <label class="cis-line"><span class="cis-lab">Link to customer record</span>
+          <select name="customer_id">
+            <option value="">— not linked —</option>
+            ${customers.map((c) => `<option value="${c.id}" ${String(s.customer_id) === String(c.id)
+              ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
+          </select></label>
+
+        <div class="cis-line-2">
+          <label class="cis-line"><span class="cis-lab" data-noun>${noun} established on</span>
+            <input name="established_on" value="${v('established_on')}" autocomplete="off"
+              placeholder="e.g. March 2019"></label>
+          <div class="cis-checks"><span class="cis-lab">Space</span>
+            <label><input type="radio" name="space_tenure" value="rented"
+              ${s.space_tenure === 'rented' ? 'checked' : ''}> Rented</label>
+            <label><input type="radio" name="space_tenure" value="owned"
+              ${s.space_tenure === 'owned' ? 'checked' : ''}> Owned</label>
+          </div>
+        </div>
+
+        <div class="cis-lab" data-noun-addr>Complete ${noun} Address</div>
+        ${addr('addr', ADDR_PARTS)}
+
+        <label class="cis-line"><span class="cis-lab">Contact Number</span>
+          <input name="contact_no" value="${v('contact_no')}" autocomplete="off"></label>
+
+        <div class="cis-lab">Owner's Name</div>
+        ${nameRow('owner1', 1)}
+        ${nameRow('owner2', 2)}
+
+        <div class="cis-lab">Residence Address</div>
+        ${addr('res', ADDR_PARTS)}
+        <div class="cis-checks"><span class="cis-lab">Residential</span>
+          <label><input type="radio" name="res_tenure" value="owned"
+            ${s.res_tenure === 'owned' ? 'checked' : ''}> Owned</label>
+          <label><input type="radio" name="res_tenure" value="rented"
+            ${s.res_tenure === 'rented' ? 'checked' : ''}> Rented</label>
+        </div>
+
+        <section id="cisCorp" class="cis-corp ${isFarm ? 'hidden' : ''}">
+          <div class="cis-lab cis-strong">If corporation / cooperative</div>
+          <div class="cis-lab">Store Manager / OIC Name</div>
+          ${nameRow('mgr1', 1)}
+          ${nameRow('mgr2', 2)}
+          <div class="cis-lab">Complete Address</div>
+          <label class="cis-line"><span class="cis-num">1.</span>
+            <input name="mgr1_address" value="${v('mgr1_address')}" autocomplete="off"></label>
+          <label class="cis-line"><span class="cis-num">2.</span>
+            <input name="mgr2_address" value="${v('mgr2_address')}" autocomplete="off"></label>
+        </section>
+
+        <div class="cis-line-2">
+          <label class="cis-line"><span class="cis-lab">Terms</span>
+            <input name="terms" value="${v('terms')}" autocomplete="off"></label>
+          <div class="cis-checks">
+            <label><input type="checkbox" name="terms_credit" ${s.terms_credit ? 'checked' : ''}> Credit</label>
+            <label><input type="checkbox" name="terms_check" ${s.terms_check ? 'checked' : ''}> Check</label>
+          </div>
+        </div>
+
+        <div class="cis-line-2">
+          <label class="cis-line"><span class="cis-lab">Bank Name</span>
+            <input name="bank_name" value="${v('bank_name')}" autocomplete="off"></label>
+          <label class="cis-line"><span class="cis-lab">Branch</span>
+            <input name="branch" value="${v('branch')}" autocomplete="off"></label>
+        </div>
+
+        <div class="cis-lab">Signature Specimens</div>
+        <div class="cis-specimens" id="cisSpecimens"></div>
+
+        <p class="cis-certify">This is to certify that all information given is true and correct.</p>
+        <div class="cis-sign-final">
+          <label class="cis-line"><span class="cis-lab">Customer's printed name</span>
+            <input name="certified_name" value="${v('certified_name')}" autocomplete="off"></label>
+          <div id="cisCertSig" class="cis-sigbox"></div>
+        </div>
+      </form>`;
   },
 
   // ================= Inventory (items CRUD + stock + manual batches + BOM) =================

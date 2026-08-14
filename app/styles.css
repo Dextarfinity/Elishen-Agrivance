@@ -415,6 +415,76 @@ label > input, label > select, label > .inputwrap { width: 100%; min-width: 0; }
   .pgnav { margin-left: 0; }
 }
 
+/* ---------- Customer Information Sheet ---------- */
+/* On screen the form mirrors the paper sheet it replaces, so staff filling it in
+   see the same field order they see on the printed template. */
+.cis-bar {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  position: sticky; top: 0; z-index: 40; padding: 10px 0 12px; background: var(--bg);
+}
+.cis-sheet {
+  background: var(--surface); border: 1px solid var(--border-strong);
+  border-radius: var(--radius); box-shadow: var(--shadow);
+  padding: 24px 26px 30px; max-width: 940px; margin: 0 auto 40px;
+}
+.cis-head { display: flex; gap: 14px; align-items: flex-start; }
+.cis-logo {
+  font-family: Georgia, "Times New Roman", serif; font-size: 46px; font-weight: 800;
+  letter-spacing: -2px; line-height: 1;
+}
+.cis-logo .e { color: var(--primary); } .cis-logo .s { color: var(--gold); }
+.cis-co { font-size: 17px; font-weight: 800; letter-spacing: .05em; }
+.cis-co-sub { font-size: 11px; color: var(--ink-2); line-height: 1.45; margin-top: 2px; }
+.cis-title {
+  text-align: center; font-size: 15px; letter-spacing: .06em; margin: 14px 0 4px;
+  text-transform: uppercase;
+}
+.cis-typepick {
+  display: flex; gap: 18px; align-items: center; flex-wrap: wrap;
+  border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+  padding: 8px 0; margin-bottom: 14px;
+}
+.cis-typepick label { flex-direction: row; align-items: center; gap: 6px; font-weight: 700; }
+.cis-hint { font-size: 11.5px; color: var(--ink-3); flex: 1; min-width: 200px; }
+.cis-lab {
+  font-size: 11.5px; font-weight: 700; color: var(--ink-2); letter-spacing: .02em;
+  margin-top: 12px; display: block;
+}
+.cis-strong { color: var(--primary); font-size: 12.5px; }
+.cis-line { flex-direction: row; align-items: center; gap: 10px; margin-top: 6px; }
+.cis-line > .cis-lab { margin-top: 0; min-width: 150px; flex: 0 0 auto; }
+.cis-line > input, .cis-line > select { flex: 1; min-width: 0; }
+.cis-line-2 { display: grid; grid-template-columns: 1fr auto; gap: 10px 22px; align-items: end; }
+.cis-addr { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 4px; }
+.cis-mini { gap: 2px; }
+.cis-mini > span { font-size: 10.5px; color: var(--ink-3); font-weight: 600; }
+.cis-mini > input { padding: 7px 8px; min-height: 34px; font-size: 13px; }
+.cis-name { display: grid; grid-template-columns: 18px repeat(3, 1fr); gap: 8px; margin-top: 6px; align-items: end; }
+.cis-num { font-weight: 700; color: var(--ink-2); padding-bottom: 8px; }
+.cis-checks { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 6px; }
+.cis-checks label { flex-direction: row; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.cis-corp {
+  border: 1px dashed var(--border-strong); border-radius: 8px;
+  padding: 4px 14px 16px; margin-top: 14px; background: var(--surface-2);
+}
+.cis-specimens { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px 22px; margin-top: 4px; }
+.cis-spec { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; }
+.cis-spec input { min-height: 34px; }
+.cis-sigimg { height: 34px; max-width: 120px; }
+.cis-certify { margin-top: 22px; font-size: 13px; }
+.cis-sign-final { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: end; margin-top: 8px; }
+.cis-sigbox { display: flex; gap: 8px; align-items: center; }
+@media (max-width: 900px) {
+  .cis-sheet { padding: 16px 14px 24px; }
+  .cis-addr { grid-template-columns: repeat(2, 1fr); }
+  .cis-specimens { grid-template-columns: 1fr; }
+  .cis-line { flex-direction: column; align-items: stretch; gap: 3px; }
+  .cis-line > .cis-lab { min-width: 0; }
+  .cis-line-2 { grid-template-columns: 1fr; }
+  .cis-name { grid-template-columns: 18px 1fr; }
+  .cis-sign-final { grid-template-columns: 1fr; }
+}
+
 /* ---------- Print (reports) ---------- */
 @media print {
   #sidebar, #sbToggle, .rangeform, .actions, button { display: none !important; }

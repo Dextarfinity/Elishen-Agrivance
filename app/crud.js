@@ -44,6 +44,10 @@ function crudBlock(key, cfg) {
     <div class="crudhead">
       <h3>${esc(cfg.title)}</h3>
       <button type="button" class="mini add" data-crud-new="${key}">Add</button>
+      ${key === 'items' ? `
+        <button type="button" class="mini printbtn" data-crud-pdf="${key}">Save as PDF</button>
+        <button type="button" class="mini printbtn" data-crud-print="${key}">Print</button>
+      ` : ''}
     </div>
     <form class="form crudform hidden" data-crud-form="${key}">
       <input type="hidden" name="id">
@@ -124,6 +128,32 @@ function wireCrud() {
       show(window._view);
     } catch (err) { alert('Error: ' + err.message); }
   });
+  // Print / PDF buttons injected into the Items CRUD header
+  document.querySelectorAll('[data-crud-print]').forEach((b) => {
+    if (typeof window.printReport === 'function') {
+      b.onclick = () => { try { window.printReport(); } catch (e) { alert('Print error: ' + (e.message || e)); } };
+      b.disabled = false; b.title = '';
+    } else {
+      b.onclick = null; b.disabled = true; b.title = 'Print module not loaded yet';
+    }
+  });
+  document.querySelectorAll('[data-crud-pdf]').forEach((b) => {
+    if (typeof window.saveReportPdf === 'function') {
+      b.onclick = () => { try { window.saveReportPdf(b); } catch (e) { alert('PDF error: ' + (e.message || e)); } };
+      b.disabled = false; b.title = '';
+    } else {
+      b.onclick = null; b.disabled = true; b.title = 'Save as PDF module not loaded yet';
+    }
+  });
+  // If the print module loads later, re-bind the buttons to the real functions
+  if (typeof window.printReport !== 'function' || typeof window.saveReportPdf !== 'function') {
+    const onReady = () => {
+      document.querySelectorAll('[data-crud-print]').forEach((b) => b.onclick = () => { try { window.printReport(); } catch (e) { alert('Print error: ' + (e.message || e)); } });
+      document.querySelectorAll('[data-crud-pdf]').forEach((b) => b.onclick = () => { try { window.saveReportPdf(b); } catch (e) { alert('PDF error: ' + (e.message || e)); } });
+      document.removeEventListener('printReady', onReady);
+    };
+    document.addEventListener('printReady', onReady);
+  }
 }
 
 // Shared option-list helpers

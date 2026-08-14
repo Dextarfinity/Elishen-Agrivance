@@ -134,6 +134,29 @@ Client notes:
 
 ---
 
+## 5b. Customer Information Sheets
+
+The paper CIS is now a page in the app (**Customer Info Sheets** in the sidebar),
+available to **every signed-in user** — not just admins — because the field reps
+are the ones who collect it. Two variants, matching the two paper forms:
+
+- **Store** — includes the *If corporation / cooperative* block (Store Manager /
+  OIC names and addresses)
+- **Farm** — same sheet without that block; wording changes to "Farm established
+  on" / "Complete Farm Address"
+
+Each sheet stores the address broken into its printed parts (No., Street, Purok,
+Barangay, Town, City, Province), both owners' names split Surname / Given /
+Middle, terms with the Credit and Check boxes, bank and branch, six signature
+specimens (typed name plus an optional on-screen signature), and the customer's
+certifying signature. **Print / Save as PDF** reproduces the form exactly, so a
+filled sheet and a blank one are the same document.
+
+Sheets can be opened from anywhere a customer appears: the customer list and the
+Statement-of-Account header on **Receivables**, and each visited store on **Store
+Visits**. A sheet may be linked to a customer record so both stay together.
+Staff may create and update sheets; deleting one is admin-only.
+
 ## 6. Day-to-day update workflow
 
 | Changed | Do |

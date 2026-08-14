@@ -182,6 +182,41 @@ CREATE TABLE IF NOT EXISTS financial_allocations (       -- Financial Allocation
     remarks    text
 );
 
+-- Customer Information Sheet: the signed paper form, field for field, so a
+-- saved sheet reprints exactly. One sheet per store or farm account.
+CREATE TABLE IF NOT EXISTS customer_info_sheets (
+    id             serial PRIMARY KEY,
+    customer_id    integer REFERENCES customers(id) ON DELETE SET NULL,
+    sheet_type     text NOT NULL DEFAULT 'store',      -- 'store' | 'farm'
+    account_name   text NOT NULL,
+    established_on text,
+    space_tenure   text,                               -- 'rented' | 'owned'
+    addr_no text, addr_street text, addr_purok text, addr_barangay text,
+    addr_town text, addr_city text, addr_province text,
+    contact_no text,
+    owner1_surname text, owner1_given text, owner1_middle text,
+    owner2_surname text, owner2_given text, owner2_middle text,
+    res_no text, res_street text, res_purok text, res_barangay text,
+    res_town text, res_city text, res_province text,
+    res_tenure     text,                               -- 'owned' | 'rented'
+    -- corporation / cooperative block (store sheets only)
+    mgr1_surname text, mgr1_given text, mgr1_middle text,
+    mgr2_surname text, mgr2_given text, mgr2_middle text,
+    mgr1_address text, mgr2_address text,
+    terms text,
+    terms_credit boolean NOT NULL DEFAULT false,
+    terms_check  boolean NOT NULL DEFAULT false,
+    bank_name text, branch text,
+    specimens           jsonb NOT NULL DEFAULT '[]'::jsonb,  -- [{name, signature}] x6
+    certified_name      text,
+    certified_signature text,
+    created_by text,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    version    integer NOT NULL DEFAULT 1
+);
+CREATE INDEX IF NOT EXISTS idx_cis_customer ON customer_info_sheets(customer_id);
+
 -- ============================================================
 -- Reporting views (replaces dashboards / derived tabs)
 -- ============================================================
