@@ -126,6 +126,60 @@ function reportTitle() {
     || document.querySelector('#main h2')?.textContent || 'Report').trim();
 }
 
+// ---------- editable preview ----------
+// Everything in a preview can be corrected before it is printed: a wrong spelling,
+// a note added by hand, a row struck out. Edits live only in the preview — they
+// change the paper, never the database — and they are carried into the PDF too.
+const PV_EDIT_CSS = `
+  [data-pvedit] { outline: 0; }
+  [data-pvedit]:focus-within { }
+  [data-pvedit] *:focus { outline: 2px dashed #e3a71f; outline-offset: 2px; border-radius: 2px; }
+  #pvhint { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9998; padding: 7px 16px;
+    background: rgba(30,92,40,.94); color: #fff; cursor: pointer;
+    font: 600 12px "Segoe UI", Arial, sans-serif; }
+  @media screen { body { padding-bottom: 44px !important; } }
+  @media print {
+    #pvhint { display: none !important; }
+    body { padding-bottom: 0 !important; }
+    [data-pvedit] *:focus { outline: 0 !important; }
+  }`;
+
+// make the document's content editable, leaving the toolbar alone
+function makeEditable(doc) {
+  if (!doc || !doc.body) return;
+  const st = doc.createElement('style');
+  st.id = 'pvEditStyle';
+  st.textContent = PV_EDIT_CSS;
+  doc.head.appendChild(st);
+  [...doc.body.children].forEach((el) => {
+    if (el.id === 'pvbar' || el.id === 'pvhint') return;
+    el.setAttribute('contenteditable', 'true');
+    el.setAttribute('data-pvedit', '');
+    el.setAttribute('spellcheck', 'false');
+  });
+  const hint = doc.createElement('div');
+  hint.id = 'pvhint';
+  hint.textContent = 'Click any text to correct it before printing — edits apply to this printout only, '
+    + 'not to your records. (Tap to dismiss)';
+  hint.onclick = () => hint.remove();
+  doc.body.appendChild(hint);
+}
+
+// the document as it stands now, edits and all, with the preview's own furniture
+// stripped out — this is what the PDF must be built from
+function editedHTML(doc, fallback) {
+  try {
+    const root = doc.documentElement.cloneNode(true);
+    root.querySelectorAll('#pvbar, #pvhint, #pvEditStyle, #pvBarStyle').forEach((e) => e.remove());
+    root.querySelectorAll('[data-pvedit]').forEach((e) => {
+      e.removeAttribute('contenteditable');
+      e.removeAttribute('data-pvedit');
+      e.removeAttribute('spellcheck');
+    });
+    return '<!doctype html>' + root.outerHTML;
+  } catch { return fallback; }
+}
+
 // Every print path goes through this preview: the document opens in a new
 // window with a choice bar — nothing prints until the user picks an action.
 // On the phone app (or when pop-ups are blocked) it opens as an IN-APP overlay
@@ -138,6 +192,7 @@ function openPrintPreview(html, pdfName) {
   w.document.close();
   const doc = w.document;
   const st = doc.createElement('style');
+  st.id = 'pvBarStyle';
   st.textContent = `
     #pvbar { position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
       display: flex; align-items: center; gap: 10px; padding: 9px 16px;
@@ -154,15 +209,17 @@ function openPrintPreview(html, pdfName) {
   doc.head.appendChild(st);
   const bar = doc.createElement('div');
   bar.id = 'pvbar';
-  bar.innerHTML = `<span>Preview — choose an action</span>
+  bar.innerHTML = `<span>Preview — editable; correct anything, then choose an action</span>
     <button type="button" id="pvPdf">Save as PDF</button>
     <button type="button" id="pvPrint">Print</button>`;
   doc.body.prepend(bar);
+  makeEditable(doc);
   doc.getElementById('pvPrint').onclick = () => { try { w.focus(); w.print(); } catch (e) {} };
   const pdfBtn = doc.getElementById('pvPdf');
   pdfBtn.onclick = async () => {
     pdfBtn.disabled = true; pdfBtn.textContent = 'Generating…';
-    try { await htmlToPdf(html, pdfName); }
+    // build the PDF from the document as edited, not the original markup
+    try { await htmlToPdf(editedHTML(doc, html), pdfName); }
     catch (e) { alert('PDF error: ' + e.message); }
     finally { pdfBtn.disabled = false; pdfBtn.textContent = 'Save as PDF'; }
   };
@@ -179,7 +236,7 @@ function openPreviewOverlay(html, pdfName, native) {
                 padding-top:max(10px, env(safe-area-inset-top))">
       <button type="button" id="pvOvBack" style="border:0;border-radius:8px;padding:9px 14px;
         background:#fff;color:#1e5c28;font-weight:700;cursor:pointer">&lsaquo; Back</button>
-      <b style="flex:1;font-size:14px">Preview</b>
+      <b style="flex:1;font-size:14px">Preview <span style="font-weight:400;opacity:.85">— tap text to edit</span></b>
       <button type="button" id="pvOvPdf" style="border:0;border-radius:8px;padding:9px 14px;
         background:#e3a71f;color:#1c1c1c;font-weight:700;cursor:pointer">Save as PDF</button>
       ${native ? '' : `<button type="button" id="pvOvPrint" style="border:0;border-radius:8px;
@@ -187,12 +244,16 @@ function openPreviewOverlay(html, pdfName, native) {
     </div>
     <iframe style="flex:1;width:100%;border:0;background:#fff"></iframe>`;
   document.body.appendChild(ov);
-  ov.querySelector('iframe').srcdoc = html;
+  const frame = ov.querySelector('iframe');
+  // the srcdoc document only exists once it has loaded — make it editable then
+  frame.onload = () => { try { makeEditable(frame.contentDocument); } catch (e) {} };
+  frame.srcdoc = html;
   document.getElementById('pvOvBack').onclick = () => ov.remove();
   document.getElementById('pvOvPdf').onclick = async (e) => {
     const b = e.target;
     b.disabled = true; b.textContent = 'Generating…';
-    try { await htmlToPdf(html, pdfName); }
+    // build the PDF from the document as edited, not the original markup
+    try { await htmlToPdf(editedHTML(frame.contentDocument, html), pdfName); }
     catch (err) { alert('PDF error: ' + err.message); }
     b.disabled = false; b.textContent = 'Save as PDF';
   };
