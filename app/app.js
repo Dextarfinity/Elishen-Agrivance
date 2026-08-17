@@ -547,6 +547,14 @@ function wireSalesActions() {
     const sale = (window._salesRows || []).find((s) => s.id === Number(b.dataset.makedr));
     document.getElementById('drModalTitle').textContent =
       `New Delivery Receipt — Invoice #${sale?.sales_no ?? ''} · ${sale?.customer ?? ''}`;
+    // default the driver to the invoice's sales rep — the rep is normally who
+    // delivers, and a blank field prints a DR with no one named as deliverer
+    if (sale && sale.sales_rep_id) {
+      api.get('/api/sales_reps').then((reps) => {
+        const r = reps.find((x) => x.id === Number(sale.sales_rep_id));
+        if (r && !form.delivered_by.value.trim()) form.delivered_by.value = r.name;
+      }).catch(() => {});
+    }
     modal.classList.remove('hidden');
     // live uniqueness check on DR No.
     const out = document.getElementById('drCheck');
@@ -2476,6 +2484,17 @@ document.addEventListener('click', (e) => {
   const key = d.pgprev || d.pgnext;
   window._pg[key].page += d.pgnext ? 1 : -1;
   repageTable(key);
+});
+
+// ---- per-section print (delegated, so it works on re-renders and inside modals) ----
+// Prints just the section the button sits in, on the same letterhead as the page
+// report, and with every row of a paginated table rather than the visible page.
+document.addEventListener('click', (e) => {
+  const b = e.target.closest && e.target.closest('[data-secprint]');
+  if (!b) return;
+  const section = b.closest('.tablewrap') || b.closest('.modal-body') || b.parentElement;
+  if (typeof window.printSection !== 'function') return alert('Print module not loaded yet.');
+  try { window.printSection(section); } catch (err) { alert('Print error: ' + (err.message || err)); }
 });
 
 document.querySelectorAll('#sidebar button[data-view]').forEach((b) =>

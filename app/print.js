@@ -5,12 +5,17 @@
 // (inventory prints the item catalog only — not batches, production, or BOM)
 const PRINT_SCOPE = { inventory: '[data-crud="items"]' };
 
-function buildPrintHTML(title) {
-  const clone = document.getElementById('main').cloneNode(true);
+// rootEl prints just that part of the page (one table section, one modal body);
+// omitted, the whole page prints as before
+function buildPrintHTML(title, rootEl) {
+  const clone = (rootEl || document.getElementById('main')).cloneNode(true);
   clone.querySelectorAll('.modal, .loading, .error, .printbtn').forEach((e) => e.remove());
+  // pagination chrome is a screen control, never part of a report
+  clone.querySelectorAll('.pgbar').forEach((e) => e.remove());
   // collapsed sections still print in full
   clone.querySelectorAll('details').forEach((d) => d.setAttribute('open', ''));
-  const scopeSel = PRINT_SCOPE[window._view];
+  // a per-view scope only makes sense when printing the whole page
+  const scopeSel = rootEl ? null : PRINT_SCOPE[window._view];
   if (scopeSel) {
     const keep = clone.querySelectorAll(scopeSel);
     if (keep.length) {
@@ -199,6 +204,30 @@ function printReport() {
   openPrintPreview(buildPrintHTML(reportTitle()), reportTitle());
 }
 
+// Print ONE section on its own letterhead — a table block on a page, or the body
+// of a modal. Paginated tables still print every row, because buildPrintHTML
+// swaps the visible page for the cached full set.
+function printSection(el, title) {
+  if (!el) return printReport();
+  const name = title || sectionTitle(el);
+  openPrintPreview(buildPrintHTML(name, el), name);
+}
+
+// the nearest heading above a section names it; fall back to the page title
+function sectionTitle(el) {
+  let n = el;
+  while (n && n !== document.body) {
+    for (let p = n.previousElementSibling; p; p = p.previousElementSibling) {
+      if (/^H[2-4]$/.test(p.tagName)) {
+        const t = (p.childNodes[0]?.textContent || p.textContent || '').trim();
+        if (t) return t;
+      }
+    }
+    n = n.parentElement;
+  }
+  return reportTitle();
+}
+
 // Save the current page's report as a .pdf directly (A4, paginated)
 async function saveReportPdf(btn) {
   const title = reportTitle();
@@ -308,13 +337,18 @@ const NO_PRINT_VIEWS = ['newsale', 'stocktake', 'settings'];
 
 // ---------- Delivery Receipt: generated from an invoice, printed on demand ----------
 async function printDeliveryReceipt(deliveryId) {
-  const [deliveries, sales, settings] = await Promise.all([
+  const [deliveries, sales, settings, reps] = await Promise.all([
     api.get('/api/deliveries'), api.get('/api/sales'), api.get('/api/settings'),
+    api.get('/api/sales_reps').catch(() => []),
   ]);
   const d = deliveries.find((x) => x.id === deliveryId);
   if (!d) { alert('Delivery not found'); return; }
   const s = sales.find((x) => x.id === d.sale_id) || {};
   const items = s.items || [];
+  // A DR written without naming a driver falls back to the invoice's sales rep —
+  // the rep IS who delivered it, and a blank "Delivered by" voids the signature line.
+  const repName = (reps.find((r) => r.id === Number(s.sales_rep_id)) || {}).name || '';
+  const deliveredBy = String(d.delivered_by || '').trim() || repName;
   const totalQty = items.reduce((a, it) => a + Number(it.qty), 0);
   const P = (n) => n == null ? '' :
     Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -363,7 +397,7 @@ async function printDeliveryReceipt(deliveryId) {
       <tr><td class="l">BUSINESS ADDRESS:</td><td>${s.store_farm ?? ''}</td>
           <td class="l">TERMS:</td><td>${s.term ?? ''}</td></tr>
       <tr><td class="l">INVOICE REF:</td><td>#${s.sales_no ?? ''}</td>
-          <td class="l">DELIVERED BY:</td><td>${d.delivered_by ?? ''}${d.vehicle ? ' · ' + d.vehicle : ''}</td></tr>
+          <td class="l">DELIVERED BY:</td><td>${esc(deliveredBy)}${d.vehicle ? ' · ' + esc(d.vehicle) : ''}</td></tr>
     </table>
     <table class="items">
       <thead><tr><th style="width:30px">#</th><th style="width:55px">QTY</th>
@@ -403,7 +437,7 @@ async function printDeliveryReceipt(deliveryId) {
     <div class="sigs">
       <div class="sig"><div class="line"></div>Issued by</div>
       <div class="sig"><div class="line"></div>Checked by</div>
-      <div class="sig"><div class="line">${d.delivered_by ? `<span style="font-weight:700">${d.delivered_by}</span>` : ''}</div>Delivered by</div>
+      <div class="sig"><div class="line">${deliveredBy ? `<span style="font-weight:700">${esc(deliveredBy)}</span>` : ''}</div>Delivered by</div>
       <div class="sig">
         <div class="line" style="display:flex;align-items:flex-end;justify-content:center">
           ${d.signature ? `<img src="${d.signature}" style="height:44px;margin-bottom:-8px" alt="">` : ''}
@@ -870,6 +904,7 @@ function injectPrintButton() {
 // expose convenience globals and announce readiness so other scripts can bind
 try {
   window.printReport = printReport;
+  window.printSection = printSection;
   window.saveReportPdf = saveReportPdf;
   window.printDeliveryReceipt = printDeliveryReceipt;
   window.injectPrintButton = injectPrintButton;

@@ -968,10 +968,34 @@ app.get('/api/cis/:id', wrap(async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);
 }));
+// A sheet filed for a store or farm that is not on the books yet puts that
+// account into `customers`, so it reaches the sale picker, Receivables and the
+// reports instead of living only inside the sheet. An explicit customer_id
+// always wins — that is someone deliberately linking to an existing record.
+async function cisCustomerId(b) {
+  if (b.customer_id) return Number(b.customer_id);
+  const name = String(b.account_name || '').trim();
+  if (!name) return null;
+  const address = ['addr_no', 'addr_street', 'addr_purok', 'addr_barangay',
+                   'addr_town', 'addr_city', 'addr_province']
+    .map((k) => String(b[k] ?? '').trim()).filter(Boolean).join(', ') || null;
+  const { rows } = await q(`
+    INSERT INTO customers (name, address, contact_no, term)
+    VALUES ($1,$2,$3,$4)
+    ON CONFLICT ((UPPER(TRIM(name)))) DO UPDATE SET
+      address    = COALESCE(customers.address, EXCLUDED.address),
+      contact_no = COALESCE(customers.contact_no, EXCLUDED.contact_no),
+      term       = COALESCE(customers.term, EXCLUDED.term)
+    RETURNING id`,
+    [name, address, b.contact_no || null, b.terms || null]);
+  return rows[0].id;
+}
+
 app.post('/api/cis', wrap(async (req, res) => {
   const b = req.body || {};
   if (!b.account_name) return res.status(400).json({ error: 'Account name is required.' });
   if (!['store', 'farm'].includes(b.sheet_type)) b.sheet_type = 'store';
+  b.customer_id = await cisCustomerId(b);
   const cols = [...CIS_COLS, 'created_by'];
   const vals = [...cisValues(b), req._auth?.name || null];
   const { rows } = await q(
@@ -983,6 +1007,7 @@ app.put('/api/cis/:id', wrap(async (req, res) => {
   const b = req.body || {};
   if (!b.account_name) return res.status(400).json({ error: 'Account name is required.' });
   if (!['store', 'farm'].includes(b.sheet_type)) b.sheet_type = 'store';
+  b.customer_id = await cisCustomerId(b);      // renaming the account keeps it on the books
   const sets = CIS_COLS.map((c, i) => `${c} = $${i + 2}`).join(', ');
   const { rows } = await q(
     `UPDATE customer_info_sheets SET ${sets}, updated_at = now(), version = version + 1

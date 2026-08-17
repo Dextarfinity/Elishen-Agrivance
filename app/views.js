@@ -66,17 +66,21 @@ function tableShell(key) {
     });
   }
 
-  const filterBar = allRows.length > 10 ? `
+  // Every section carries its own search and its own print button. The date range
+  // only appears where the rows actually have a date to filter on.
+  const filterBar = `
     <div class="tblfilter">
       <input type="search" data-pgq="${key}" value="${esc(pg.q)}"
-        placeholder="Search customer, item, anything…">
-      ${dateCol ? `
+        placeholder="Search this section…">
+      ${dateCol && allRows.length > 1 ? `
         <label>From <input type="date" data-pgfrom="${key}" value="${pg.from}"></label>
         <label>To <input type="date" data-pgto="${key}" value="${pg.to}"></label>` : ''}
       ${(pg.q || pg.from || pg.to) ? `
         <button type="button" class="mini" data-pgclear="${key}">Clear</button>
         <span class="tblmatch">${rows.length} of ${allRows.length} match</span>` : ''}
-    </div>` : '';
+      <button type="button" class="mini secprint" data-secprint="${key}"
+        title="Print this section">&#128424;<span class="secprint-t"> Print</span></button>
+    </div>`;
 
   const size = pg.size === 'All' ? Math.max(rows.length, 1) : pg.size;
   const pages = Math.max(1, Math.ceil(rows.length / size));
