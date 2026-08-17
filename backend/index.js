@@ -174,33 +174,65 @@ async function bootstrapFeedDiscounts() {
   // supersedes the single flat figure this column briefly held
   await pool.query('ALTER TABLE items DROP COLUMN IF EXISTS bag_discount');
 
-  // Seeded only where nothing has been set yet, so a figure typed in the app
-  // is never overwritten on the next restart.
+  // The two shop databases spell their catalogues differently — one has
+  // "(25kg)" where the other has "(25x1kg)", one says "Fortifier 32 Pellets"
+  // where the other does not — so this classifies on the BRAND in the product
+  // name as well as the category, all case-insensitively. Keying on an exact
+  // category string would quietly discount nothing at all on one of them.
+  const CLASSIFY = `
+    SELECT i.id,
+      CASE
+        WHEN i.category ILIKE '%treat%' OR i.category ILIKE '%suppl%' THEN NULL
+        WHEN i.category ILIKE '%hog%'   OR i.category ILIKE '%game%fowl%'
+          OR i.name ILIKE '%supremo infinity%' OR i.name ILIKE '%uno+%'
+          OR i.name ILIKE '%stargain%'                                THEN 'hogfeed'
+        WHEN i.name ILIKE 'topbreed%'                                 THEN 'topbreed'
+      END AS kind,
+      CASE
+        WHEN i.name ILIKE '%50kg%'                            THEN 50
+        WHEN i.name ILIKE '%25kg%' OR i.name ILIKE '%25x1kg%' THEN 25
+        -- 2kgx10 is 20kg of feed, the same as a 20kg sack
+        WHEN i.name ILIKE '%20kg%' OR i.name ILIKE '%2kgx10%' THEN 20
+        WHEN i.name ILIKE '%5kg%'                             THEN 5
+      END AS size
+    FROM items i
+    WHERE UPPER(TRIM(i.name)) <> UPPER(TRIM($1))`;
+
+  // Seeded only where nothing has been set yet, so a figure typed into
+  // Inventory is never overwritten on the next restart.
   const { rowCount } = await pool.query(`
     UPDATE items SET cod_discount = v.cod, term_discount = v.term
-    FROM (VALUES
-      ('hogfeed', 50, 100, 80), ('hogfeed', 25,  50, 40),
-      ('topbreed', 20, 120, 100), ('topbreed',  5,  25, 20)
-    ) AS v(kind, size, cod, term)
-    WHERE items.cod_discount = 0 AND items.term_discount = 0
-      AND items.name <> $1
-      AND v.kind = CASE
-            WHEN items.category ILIKE '%hog%' OR items.category = 'Gamefowl' THEN 'hogfeed'
-            WHEN items.name ILIKE 'Topbreed%' AND items.category = 'Pet Food' THEN 'topbreed'
-          END
-      AND v.size = CASE
-            WHEN items.name ILIKE '%50KG%' THEN 50
-            WHEN items.name ILIKE '%25KG%' OR items.name ILIKE '%25x1kg%' THEN 25
-            -- 2kgx10 is 20kg of feed, same as a 20kg sack
-            WHEN items.name ILIKE '%20KG%' OR items.name ILIKE '%2kgx10%' THEN 20
-            WHEN items.name ILIKE '%5KG%' THEN 5
-          END`, [TB_FIXED]);
-  if (rowCount) console.log(`Feed discounts: set COD/Term rates on ${rowCount} item(s).`);
+    FROM (${CLASSIFY}) c
+    JOIN (VALUES ('hogfeed', 50, 100, 80), ('hogfeed', 25,  50, 40),
+                 ('topbreed', 20, 120, 100), ('topbreed',  5,  25, 20))
+      AS v(kind, size, cod, term) ON v.kind = c.kind AND v.size = c.size
+    WHERE items.id = c.id
+      AND items.cod_discount = 0 AND items.term_discount = 0`, [TB_FIXED]);
+
+  // Say plainly what happened — a silent no-op here looks exactly like a broken
+  // feature at the till, and that is expensive to diagnose from the far end.
+  const { rows: [t] } = await pool.query(
+    `SELECT count(*) FILTER (WHERE kind IS NOT NULL AND size IS NOT NULL) AS matched,
+            count(*) FILTER (WHERE kind IS NOT NULL AND size IS NULL)     AS unsized
+       FROM (${CLASSIFY}) c`, [TB_FIXED]);
+  console.log(`Feed discounts: ${rowCount} item(s) rated now; `
+    + `${t.matched} of the catalogue qualify for a COD/Term rate.`);
+  if (Number(t.matched) === 0) {
+    console.warn('Feed discounts: WARNING — no hog, Infinity or Topbreed items matched. '
+      + 'Check the product names and categories in Inventory.');
+  } else if (Number(t.unsized) > 0) {
+    const { rows } = await pool.query(
+      `SELECT i.name FROM (${CLASSIFY}) c JOIN items i ON i.id = c.id
+        WHERE c.kind IS NOT NULL AND c.size IS NULL ORDER BY i.name`, [TB_FIXED]);
+    console.warn(`Feed discounts: ${t.unsized} feed item(s) have no recognisable sack `
+      + `size, so they carry no discount: ${rows.map((r) => r.name).join('; ')}`);
+  }
 
   // One-off correction to the competitor-matched price. Guarded on the old value
   // so a deliberate repricing later is not undone on every restart.
   const fixed = await pool.query(
-    'UPDATE items SET sales_price = 1430 WHERE name = $1 AND sales_price = 1580', [TB_FIXED]);
+    `UPDATE items SET sales_price = 1430, cod_discount = 0, term_discount = 0
+      WHERE UPPER(TRIM(name)) = UPPER(TRIM($1)) AND sales_price = 1580`, [TB_FIXED]);
   if (fixed.rowCount) console.log(`Feed discounts: ${TB_FIXED} set to its fixed P1,430 price.`);
 }
 bootstrapFeedDiscounts().catch((e) => console.error('Feed-discount bootstrap failed:', e));
