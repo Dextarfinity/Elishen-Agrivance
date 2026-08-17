@@ -2,7 +2,7 @@
 const main = document.getElementById('main');
 window._view = 'dashboard';
 
-// ---- role-based access: Purchases → Settings are admin-only ----
+// ---- role-based access: Purchases → Settings are admin-only ----5 211111222222223
 const ADMIN_VIEWS = ['matrix', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
   'monitoring', 'reports', 'settings'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
@@ -91,15 +91,54 @@ function applyRoleGates() {
 
 // ---- live camera capture: the ONLY way to attach a punch photo (no file uploads) ----
 // resolves to a JPEG data URL, null (user cancelled), or 'nocam' (no usable camera)
-function openCameraShot(title) {
+//
+// opts.facing picks which lens opens first — 'user' for selfies (attendance),
+// 'environment' for photographing something (store fronts, receipts). Phones carry
+// several lenses, so the user can flip front/back or pick any camera by name; the
+// choice is remembered per purpose so the right lens opens next time.
+function openCameraShot(title, opts = {}) {
   return new Promise(async (resolve) => {
+    let facing = opts.facing === 'environment' ? 'environment' : 'user';
+    const memKey = () => `ea_cam_${facing}`;
+    let deviceId = localStorage.getItem(memKey()) || '';
+    let devices = [];
     let stream = null;
-    try {
-      stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
-        audio: false,
-      });
-    } catch { return resolve('nocam'); }
+
+    // Try the remembered camera first, then any lens facing the right way, then
+    // whatever exists — a remembered camera can vanish (unplugged webcam, new phone).
+    async function openStream() {
+      const size = { width: { ideal: 1280 }, height: { ideal: 960 } };
+      const attempts = [];
+      if (deviceId) attempts.push({ video: { ...size, deviceId: { exact: deviceId } }, audio: false });
+      attempts.push({ video: { ...size, facingMode: { ideal: facing } }, audio: false });
+      attempts.push({ video: true, audio: false });
+      for (const c of attempts) {
+        try { return await navigator.mediaDevices.getUserMedia(c); } catch {}
+      }
+      return null;
+    }
+    // Labels are only readable after permission is granted, so this runs post-stream.
+    async function listCameras() {
+      try {
+        const all = await navigator.mediaDevices.enumerateDevices();
+        devices = all.filter((d) => d.kind === 'videoinput')
+          .map((d, i) => ({ id: d.deviceId, label: d.label || `Camera ${i + 1}` }));
+      } catch { devices = []; }
+    }
+    // Track what actually opened: the browser may hand back a different lens than asked.
+    function syncActive() {
+      const s = stream && stream.getVideoTracks()[0]?.getSettings
+        ? stream.getVideoTracks()[0].getSettings() : {};
+      if (s.deviceId) deviceId = s.deviceId;
+      if (s.facingMode) facing = s.facingMode === 'environment' ? 'environment' : 'user';
+      try { if (deviceId) localStorage.setItem(memKey(), deviceId); } catch {}
+    }
+
+    stream = await openStream();
+    if (!stream) return resolve('nocam');
+    syncActive();
+    await listCameras();
+
     document.getElementById('camModal')?.remove();
     const modal = document.createElement('div');
     modal.id = 'camModal';
@@ -109,33 +148,81 @@ function openCameraShot(title) {
         <div class="modal-head"><h3 style="margin:0;flex:1">${title}</h3>
           <button type="button" class="mini" id="camCancel">Cancel</button></div>
         <div class="modal-body" style="padding:16px;text-align:center">
-          <video id="camVideo" autoplay playsinline
-            style="width:100%;max-height:320px;border-radius:10px;background:#000;transform:scaleX(-1)"></video>
+          <video id="camVideo" autoplay playsinline muted
+            style="width:100%;max-height:320px;border-radius:10px;background:#000"></video>
           <img id="camShot" class="hidden" style="width:100%;max-height:320px;border-radius:10px" alt="">
-          <div style="display:flex;gap:8px;justify-content:center;margin-top:12px">
+          <div id="camPick" class="hidden" style="margin-top:10px">
+            <label style="font-size:12.5px;color:#555">Camera
+              <select id="camSelect" style="margin-left:6px;padding:6px;max-width:78%"></select>
+            </label>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:12px">
+            <button type="button" class="mini hidden" id="camFlip">&#8646; Flip camera</button>
             <button type="button" class="primary" id="camSnap">Take photo</button>
             <button type="button" class="mini hidden" id="camRetake">Retake</button>
             <button type="button" class="primary hidden" id="camUse">Use this photo</button>
           </div>
+          <div id="camErr" style="color:#b02020;font-size:12.5px;margin-top:8px"></div>
         </div>
       </div>`;
     document.body.appendChild(modal);
+
     const video = document.getElementById('camVideo');
-    video.srcObject = stream;
+    const sel = document.getElementById('camSelect');
+    const flip = document.getElementById('camFlip');
+    const err = document.getElementById('camErr');
     let shot = null;
-    const stop = () => stream.getTracks().forEach((t) => t.stop());
-    const close = (val) => { stop(); modal.remove(); resolve(val); };
+
+    // a front lens is mirrored so it behaves like a mirror; a rear lens must not be
+    const isFront = () => facing !== 'environment';
+    const paint = () => {
+      video.srcObject = stream;
+      video.style.transform = isFront() ? 'scaleX(-1)' : 'none';
+      flip.classList.toggle('hidden', devices.length < 2);
+      document.getElementById('camPick').classList.toggle('hidden', devices.length < 2);
+      sel.innerHTML = devices.map((d) =>
+        `<option value="${d.id}"${d.id === deviceId ? ' selected' : ''}>${d.label}</option>`).join('');
+    };
+    paint();
+
+    const stopStream = () => { if (stream) stream.getTracks().forEach((t) => t.stop()); };
+    const close = (val) => { stopStream(); modal.remove(); resolve(val); };
+
+    // swap lenses without dropping the modal; on failure keep the old stream running
+    async function switchTo(next) {
+      const prev = { stream, deviceId, facing };
+      err.textContent = '';
+      stopStream();
+      stream = null;
+      if (next.deviceId !== undefined) deviceId = next.deviceId;
+      if (next.facing) { facing = next.facing; deviceId = localStorage.getItem(memKey()) || ''; }
+      stream = await openStream();
+      if (!stream) {                       // nothing opened — put the old lens back
+        deviceId = prev.deviceId; facing = prev.facing;
+        stream = await openStream();
+        err.textContent = 'Could not switch camera — staying on the current one.';
+      }
+      if (!stream) return close('nocam');  // the old one is gone too
+      syncActive();
+      await listCameras();
+      paint();
+    }
+
+    flip.onclick = () => switchTo({ facing: isFront() ? 'environment' : 'user' });
+    sel.onchange = () => switchTo({ deviceId: sel.value });
     document.getElementById('camCancel').onclick = () => close(null);
     document.getElementById('camSnap').onclick = () => {
       const c = document.createElement('canvas');
       c.width = video.videoWidth || 640; c.height = video.videoHeight || 480;
       const cx = c.getContext('2d');
-      cx.translate(c.width, 0); cx.scale(-1, 1);       // un-mirror so the photo reads naturally
+      if (isFront()) { cx.translate(c.width, 0); cx.scale(-1, 1); }  // un-mirror selfies
       cx.drawImage(video, 0, 0, c.width, c.height);
       shot = c.toDataURL('image/jpeg', 0.7);
       document.getElementById('camShot').src = shot;
       document.getElementById('camShot').classList.remove('hidden');
       video.classList.add('hidden');
+      document.getElementById('camPick').classList.add('hidden');
+      flip.classList.add('hidden');
       document.getElementById('camSnap').classList.add('hidden');
       document.getElementById('camRetake').classList.remove('hidden');
       document.getElementById('camUse').classList.remove('hidden');
@@ -144,6 +231,8 @@ function openCameraShot(title) {
       shot = null;
       document.getElementById('camShot').classList.add('hidden');
       video.classList.remove('hidden');
+      document.getElementById('camPick').classList.toggle('hidden', devices.length < 2);
+      flip.classList.toggle('hidden', devices.length < 2);
       document.getElementById('camSnap').classList.remove('hidden');
       document.getElementById('camRetake').classList.add('hidden');
       document.getElementById('camUse').classList.add('hidden');
@@ -1187,7 +1276,9 @@ function wire(view) {
     };
     // switching between Cash and a credit term changes the per-bag discount, so
     // every line already on the invoice re-prices itself the moment it changes
-    const onTermChange = () => { computeDue(); repriceLines(); renderLines(); };
+    // reprice FIRST: a Cash term pre-fills "amount paid" from the running total, so
+    // the lines must already carry the COD rate or the counter is handed a stale figure
+    const onTermChange = () => { repriceLines(); renderLines(); computeDue(); };
     termSel.onchange = onTermChange;
     document.querySelector('#saleForm [name=term]')?.addEventListener('change', onTermChange);
     dateIn.addEventListener('change', computeDue);
@@ -1216,7 +1307,10 @@ function wire(view) {
         if (match) termSel.value = match.value;
         else { termSel.value = 'Custom…'; f.term.value = c.term; }
       }
-      computeDue();
+      // the customer's usual term decides COD vs Term per-bag rates, and setting a
+      // <select> in code fires no change event — reprice the lines by hand, or an
+      // invoice keeps the wrong rate right up to saving
+      onTermChange();
     };
     const custModal = document.getElementById('custModal');
     const renderCust = (q = '') => {
@@ -1424,7 +1518,7 @@ function wire(view) {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(vf));
       // verification: live storefront photo, then geotag, then save
-      const shot = await openCameraShot(`Store visit — ${f.store_name}`);
+      const shot = await openCameraShot(`Store visit — ${f.store_name}`, { facing: 'environment' });
       if (shot === null) return;                    // user backed out
       let photo = null;
       if (shot === 'nocam') {
@@ -1896,7 +1990,7 @@ function wire(view) {
   if (view === 'expenses') {
     // receipt proof: live camera capture only (same policy as attendance selfies)
     document.querySelectorAll('[data-expsnapreceipt]').forEach((b) => b.onclick = async () => {
-      const shot = await openCameraShot('Snap the receipt');
+      const shot = await openCameraShot('Snap the receipt', { facing: 'environment' });
       if (shot === null) return;
       if (shot === 'nocam') return alert('No camera found — receipts must be photographed live.');
       try {
