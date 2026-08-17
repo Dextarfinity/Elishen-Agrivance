@@ -61,7 +61,15 @@ CREATE TABLE IF NOT EXISTS items (                       -- Inventory tab
     preferred_vendor_id int REFERENCES vendors(id),
     units_in_purchase  numeric(14,3),
     promotion          text,
-    notes              text
+    notes              text,
+    -- Flat customer discount in pesos per bag for feeds and Topbreed. Which one
+    -- applies depends on how the customer pays: a Cash sale is COD, every credit
+    -- term is Term. Hogs/Infinity 50kg = 100/80, 25kg & 1kgx25 = 50/40;
+    -- Topbreed 20kg = 120/100, 5kg = 25/20. Topbreed Dog Adult (20KG) is held at
+    -- its competitor-matched P1,430 and carries neither. Both land in the sale
+    -- line's `discount` column, which is likewise pesos per unit.
+    cod_discount       numeric(12,2) NOT NULL DEFAULT 0,
+    term_discount      numeric(12,2) NOT NULL DEFAULT 0
 );
 -- profit  = sales_price - cost          (Inventory!L)
 -- margin  = (sales_price - cost)/cost   (Inventory!M)  → computed in views

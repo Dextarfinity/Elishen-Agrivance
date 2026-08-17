@@ -153,6 +153,58 @@ async function bootstrapAliases() {
 }
 bootstrapAliases().catch((e) => console.error('Alias bootstrap failed:', e));
 
+// ---------- per-bag customer discount (feeds & pet food) ----------
+// Feeds are discounted in flat pesos per bag, not percentages, and the figure
+// depends on how the customer pays: COD (term "Cash") gets more off than a
+// credit Term. Stored per UNIT, which is exactly what a sale line's `discount`
+// column already means — net price = unit_price - discount.
+//
+//   Hogs & Supremo Infinity   50kg          COD 100 / Term 80
+//                             25kg, 1kgx25  COD  50 / Term 40
+//   Topbreed                  20kg          COD 120 / Term 100
+//                             5kg           COD  25 / Term  20
+//
+// Topbreed Dog Adult (20KG) is the one exception: it is held at P1,430 to match
+// competitors' shelf price, so it carries no discount on either arrangement.
+const TB_FIXED = 'Topbreed Dog Adult (20KG)';
+async function bootstrapFeedDiscounts() {
+  await pool.query(`ALTER TABLE items
+    ADD COLUMN IF NOT EXISTS cod_discount  numeric(12,2) NOT NULL DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS term_discount numeric(12,2) NOT NULL DEFAULT 0`);
+  // supersedes the single flat figure this column briefly held
+  await pool.query('ALTER TABLE items DROP COLUMN IF EXISTS bag_discount');
+
+  // Seeded only where nothing has been set yet, so a figure typed in the app
+  // is never overwritten on the next restart.
+  const { rowCount } = await pool.query(`
+    UPDATE items SET cod_discount = v.cod, term_discount = v.term
+    FROM (VALUES
+      ('hogfeed', 50, 100, 80), ('hogfeed', 25,  50, 40),
+      ('topbreed', 20, 120, 100), ('topbreed',  5,  25, 20)
+    ) AS v(kind, size, cod, term)
+    WHERE items.cod_discount = 0 AND items.term_discount = 0
+      AND items.name <> $1
+      AND v.kind = CASE
+            WHEN items.category ILIKE '%hog%' OR items.category = 'Gamefowl' THEN 'hogfeed'
+            WHEN items.name ILIKE 'Topbreed%' AND items.category = 'Pet Food' THEN 'topbreed'
+          END
+      AND v.size = CASE
+            WHEN items.name ILIKE '%50KG%' THEN 50
+            WHEN items.name ILIKE '%25KG%' OR items.name ILIKE '%25x1kg%' THEN 25
+            -- 2kgx10 is 20kg of feed, same as a 20kg sack
+            WHEN items.name ILIKE '%20KG%' OR items.name ILIKE '%2kgx10%' THEN 20
+            WHEN items.name ILIKE '%5KG%' THEN 5
+          END`, [TB_FIXED]);
+  if (rowCount) console.log(`Feed discounts: set COD/Term rates on ${rowCount} item(s).`);
+
+  // One-off correction to the competitor-matched price. Guarded on the old value
+  // so a deliberate repricing later is not undone on every restart.
+  const fixed = await pool.query(
+    'UPDATE items SET sales_price = 1430 WHERE name = $1 AND sales_price = 1580', [TB_FIXED]);
+  if (fixed.rowCount) console.log(`Feed discounts: ${TB_FIXED} set to its fixed P1,430 price.`);
+}
+bootstrapFeedDiscounts().catch((e) => console.error('Feed-discount bootstrap failed:', e));
+
 // Behind Cloudflare Tunnel every req.ip is localhost — prefer the edge-provided
 // client IP for rate limiting and audit trails (LAN hits fall back to req.ip).
 const clientIp = (req) => req.get('cf-connecting-ip') || req.ip;
@@ -368,7 +420,7 @@ const TABLES = {
   items:                 ['name', 'alias', 'sku', 'category', 'type', 'initial_stock', 'minimum_stock',
                           'sales_price', 'cost', 'preferred_vendor_id', 'units_in_purchase',
                           'promotion', 'notes', 'deal', 'outright_rate', 'cod_rate',
-                          'packaging', 'uom', 'price_breakdown'],
+                          'cod_discount', 'term_discount', 'packaging', 'uom', 'price_breakdown'],
   bom_lines:             ['finished_item_id', 'component_item_id', 'quantity'],
   purchases:             ['order_date', 'received_date', 'ref_id', 'item_id', 'purchase_qty',
                           'received_qty', 'unit_cost', 'account_id', 'status', 'vendor_id', 'notes',
@@ -462,7 +514,8 @@ for (const [table, cols] of Object.entries(TABLES)) {
 // (registered BEFORE the generic loop so this route wins)
 app.get('/api/reports/item_stock', wrap(async (req, res) => {
   const { rows } = await q(
-    'SELECT v.*, i.alias FROM v_item_stock v JOIN items i ON i.id = v.id');
+    `SELECT v.*, i.alias, i.cod_discount, i.term_discount
+       FROM v_item_stock v JOIN items i ON i.id = v.id`);
   res.json(rows);
 }));
 

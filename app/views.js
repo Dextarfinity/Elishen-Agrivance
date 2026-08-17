@@ -248,7 +248,15 @@ const views = {
     ]);
     // selling-side deal (distributor → dealer, free goods paid by URC marketing)
     const ddMap = Object.fromEntries(itemsFull.map((i) => [i.id, i.price_breakdown?.dealer_deal || null]));
-    items.forEach((i) => { i.dealer_deal = ddMap[i.id]; });
+    // the per-bag COD/Term discounts come off the items table rather than the stock
+    // report, so the sale page prices correctly even before the API is restarted
+    const bagMap = Object.fromEntries(itemsFull.map((i) =>
+      [i.id, { cod: Number(i.cod_discount) || 0, term: Number(i.term_discount) || 0 }]));
+    items.forEach((i) => {
+      i.dealer_deal = ddMap[i.id];
+      i.cod_discount = Number(bagMap[i.id]?.cod ?? i.cod_discount) || 0;
+      i.term_discount = Number(bagMap[i.id]?.term ?? i.term_discount) || 0;
+    });
     // FEFO: earliest batch expiry per item (within 90 days) surfaces in the picker
     const expCut = new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
     const expBy = {};
@@ -985,6 +993,8 @@ const views = {
           { name: 'deal', label: 'Bonus deal (e.g. 10 + 2)' },
           { name: 'outright_rate', label: 'Outright disc. (0.15 = 15%)', type: 'number' },
           { name: 'cod_rate', label: 'COD disc. (0.05 = 5%)', type: 'number' },
+          { name: 'cod_discount', label: 'COD discount per bag in ₱ (cash sales)', type: 'number' },
+          { name: 'term_discount', label: 'Term discount per bag in ₱ (sales on credit)', type: 'number' },
           { name: 'preferred_vendor_id', label: 'Preferred vendor', type: 'select', options: vendors },
           { name: 'units_in_purchase', label: 'Units in purchase', type: 'number' },
           { name: 'promotion', label: 'Promotion' },
@@ -1007,6 +1017,10 @@ const views = {
               const m = stockBy[r.id]?.margin;
               return m != null ? (m * 100).toFixed(1) + '%' : '-'; } },
           { key: 'deal', label: 'Deal', render: (r) => esc(r.deal ?? '') },
+          { key: 'cod_discount', label: 'Disc./bag COD · Term', num: 1, render: (r) =>
+              (Number(r.cod_discount) || Number(r.term_discount))
+                ? `<strong>${fmt(r.cod_discount)}</strong> · ${fmt(r.term_discount)}`
+                : '<small style="color:var(--ink-3)">—</small>' },
           { key: '_st', label: 'Status', render: (r) => statusBadge(stockBy[r.id]?.status ?? '-') },
           { key: '_pr', label: '', render: (r) => `<button type="button" class="mini" data-pricing="${r.id}">Pricing</button>` },
             { key: '_cond', label: '', render: (r) =>

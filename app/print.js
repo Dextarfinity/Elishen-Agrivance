@@ -871,6 +871,8 @@ function injectPrintButton() {
 try {
   window.printReport = printReport;
   window.saveReportPdf = saveReportPdf;
+  window.printDeliveryReceipt = printDeliveryReceipt;
+  window.injectPrintButton = injectPrintButton;
   document.dispatchEvent(new Event('printReady'));
 } catch (e) {
   // ignore in constrained runtimes

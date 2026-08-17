@@ -22,6 +22,20 @@ function applyRbacDom() {
 }
 const isAdmin = () => /\badmin\b/i.test(window._user?.roles || '');
 
+// ---- COD vs Term pricing ----------------------------------------------------
+// Feeds and Topbreed are discounted in flat pesos per bag, and how the customer
+// pays decides the figure: a Cash sale is COD and gets more off; every credit
+// term (7/15/30 days, End of month, Credit, or a custom one) is on Terms. An
+// unset term reads as Terms, so a blank field never over-discounts a sale.
+function saleTermText() {
+  const sel = document.getElementById('termPreset');
+  const custom = document.querySelector('#saleForm [name=term]');
+  const v = (sel && sel.value && sel.value !== 'Custom…') ? sel.value : (custom?.value || '');
+  return String(v).trim().toLowerCase();
+}
+const termIsCod = () => /^(cash|cod)\b/.test(saleTermText());
+const bagDiscountOf = (i) => Number(termIsCod() ? i?.cod_discount : i?.term_discount) || 0;
+
 function applyRoleGates() {
   document.querySelectorAll('#sidebar button[data-view]').forEach((b) => {
     const v = b.dataset.view;
@@ -371,6 +385,21 @@ async function show(view) {
   }
 }
 
+// Print DR, but never fail silently: if print.js did not load, or the receipt
+// data cannot be fetched, say so instead of leaving a button that does nothing.
+async function runPrintDR(deliveryId) {
+  if (typeof window.printDeliveryReceipt !== 'function') {
+    alert('The printing module did not load, so the Delivery Receipt cannot be built.\n\n'
+      + 'Close and reopen the app. If it keeps happening, tell Glomer — print.js is missing.');
+    return;
+  }
+  try {
+    await window.printDeliveryReceipt(deliveryId);
+  } catch (e) {
+    alert('Could not print this Delivery Receipt: ' + (e.message || e));
+  }
+}
+
 // Pay / Void / Delete buttons on Sales + Receivables
 function wireSalesActions() {
   document.querySelectorAll('[data-pay]').forEach((b) => b.onclick = () => {
@@ -453,13 +482,13 @@ function wireSalesActions() {
       try {
         const d = await api.post(`/api/sales/${f.sale_id}/deliveries`, f);
         modal.classList.add('hidden');
-        await printDeliveryReceipt(d.id);
+        await runPrintDR(d.id);
         show(window._view);
       } catch (err) { alert('Error: ' + err.message); }
     };
   });
   document.querySelectorAll('[data-printdr]').forEach((b) =>
-    b.onclick = () => printDeliveryReceipt(Number(b.dataset.printdr)));
+    b.onclick = () => runPrintDR(Number(b.dataset.printdr)));
   document.querySelectorAll('[data-markdel]').forEach((b) => b.onclick = async () => {
     // receiver signs on-screen; the background-less signature affixes onto the DR
     const r = await openSignPad({ title: 'Mark delivered — receiver signs here' });
@@ -775,6 +804,16 @@ async function startEditSale(id) {
     }
   }
   f.due_date.value = s.due_date ? String(s.due_date).slice(0, 10) : '';
+  // An invoice written before a product carried a per-bag discount opens showing
+  // none, so editing an old sale would quietly undercut the customer. Fill the
+  // current figure in — only now that the term is on the form, since the term is
+  // what decides COD or Term rate. Lines that already hold a discount are left
+  // as saved (never doubled) and promo free goods stay at 0.00.
+  window._saleData.lines.forEach((l) => {
+    if (l.promo || Number(l.discount)) return;
+    const bag = bagDiscountOf(window._saleData.items.find((i) => i.id === l.item_id));
+    if (bag) l.discount = bag;
+  });
   // any invoice-level peso discount that isn't carried on the lines
   const lineDisc = window._saleData.lines.reduce((a, l) => a + l.qty * (l.discount || 0), 0);
   const subtotal = window._saleData.lines.reduce((a, l) => a + l.qty * l.unit_price, 0);
@@ -972,10 +1011,15 @@ function wire(view) {
     const tierPriceOf = (i) => {
       const srp = Number(i.sales_price) || 0;
       const tier = document.getElementById('priceTier')?.value || 'srp';
-      if (tier === 'srp' || !Number(i.outright_rate)) return Math.round(srp * 100) / 100;
+      // Flat per-bag discount on feeds and Topbreed. How the customer pays decides
+      // the figure: a Cash (COD) sale gets more off than one on credit Terms. It
+      // applies on every price tier — feeds carry no percentage discount, so this
+      // is the only cut they get and it must not vanish on the plain SRP tier.
+      const bag = Number(bagDiscountOf(i)) || 0;
+      if (tier === 'srp' || !Number(i.outright_rate)) return Math.round((srp - bag) * 100) / 100;
       let p = srp * (1 - Number(i.outright_rate));
       if (tier === 'cod') p *= (1 - (Number(i.cod_rate) || 0));
-      return Math.round(p * 100) / 100;
+      return Math.round((p - bag) * 100) / 100;
     };
     const listPriceOf = (i) => Math.round((Number(i.sales_price) || 0) * 100) / 100;
     // when the tier changes (customer selected / manual), every line re-prices itself:
@@ -1141,7 +1185,11 @@ function wire(view) {
       }
       // Custom…: due date left to the user
     };
-    termSel.onchange = computeDue;
+    // switching between Cash and a credit term changes the per-bag discount, so
+    // every line already on the invoice re-prices itself the moment it changes
+    const onTermChange = () => { computeDue(); repriceLines(); renderLines(); };
+    termSel.onchange = onTermChange;
+    document.querySelector('#saleForm [name=term]')?.addEventListener('change', onTermChange);
     dateIn.addEventListener('change', computeDue);
     computeDue();
 
