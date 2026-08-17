@@ -862,11 +862,14 @@ const views = {
         <label class="cis-line"><span class="cis-lab">Account Name</span>
           <input name="account_name" value="${v('account_name')}" required autocomplete="off"></label>
         <label class="cis-line"><span class="cis-lab">Link to customer record</span>
-          <select name="customer_id">
-            <option value="">— not linked —</option>
+          <select name="customer_id" id="cisCustLink">
+            <option value="new" ${!s.id && s.customer_id == null ? 'selected' : ''}>
+              + New customer — create from the Account Name above</option>
+            <option value="" ${s.id && s.customer_id == null ? 'selected' : ''}>— not linked —</option>
             ${customers.map((c) => `<option value="${c.id}" ${String(s.customer_id) === String(c.id)
               ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}
           </select></label>
+        <div class="cis-hint" id="cisLinkHint"></div>
 
         <div class="cis-line-2">
           <label class="cis-line"><span class="cis-lab" data-noun>${noun} established on</span>

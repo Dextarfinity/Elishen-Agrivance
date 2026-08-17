@@ -968,12 +968,16 @@ app.get('/api/cis/:id', wrap(async (req, res) => {
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json(rows[0]);
 }));
-// A sheet filed for a store or farm that is not on the books yet puts that
-// account into `customers`, so it reaches the sale picker, Receivables and the
-// reports instead of living only inside the sheet. An explicit customer_id
-// always wins — that is someone deliberately linking to an existing record.
+// How a sheet ties to a customer record, driven by the form's picker:
+//   a numeric id  → link to that existing customer
+//   'new'         → create the customer from the Account Name and link it, so a
+//                   store first met in the field reaches the sale picker,
+//                   Receivables and the reports instead of living only in the sheet
+//   blank         → deliberately left unlinked
 async function cisCustomerId(b) {
-  if (b.customer_id) return Number(b.customer_id);
+  const pick = b.customer_id == null ? '' : String(b.customer_id).trim();
+  if (pick && pick !== 'new') return Number(pick);
+  if (pick !== 'new') return null;
   const name = String(b.account_name || '').trim();
   if (!name) return null;
   const address = ['addr_no', 'addr_street', 'addr_purok', 'addr_barangay',

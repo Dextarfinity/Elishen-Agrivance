@@ -1050,6 +1050,26 @@ function wireCisForm() {
   form.querySelectorAll('[name=sheet_type]').forEach((r) => r.onchange = applyType);
   applyType();
 
+  // say plainly what the link choice will do before the sheet is saved
+  const link = document.getElementById('cisCustLink');
+  const linkHint = document.getElementById('cisLinkHint');
+  if (link && linkHint) {
+    const paintHint = () => {
+      const name = (form.account_name.value || '').trim();
+      linkHint.textContent = link.value === 'new'
+        ? (name
+          ? `Saving adds “${name}” as a customer and links this sheet to it. `
+            + 'A customer of that name already on file is reused, never duplicated.'
+          : 'Saving adds the Account Name above as a customer and links this sheet to it.')
+        : link.value
+          ? 'This sheet stays linked to the customer selected above.'
+          : 'This sheet will not be tied to any customer record.';
+    };
+    link.onchange = paintHint;
+    form.account_name.addEventListener('input', paintHint);
+    paintHint();
+  }
+
   const back = document.getElementById('cisBack');
   if (back) back.onclick = () => { window._cisEdit = null; show('cis'); };
 
@@ -1067,7 +1087,11 @@ function wireCisForm() {
     try {
       const saved = id ? await api.put(`/api/cis/${id}`, body) : await api.post('/api/cis', body);
       window._cisEdit = null;
-      toast(id ? 'Information sheet updated.' : 'Information sheet saved.');
+      window._cisCustomers = null;      // a customer may have just been created — reload the picker
+      const madeNew = body.customer_id === 'new' && saved && saved.customer_id;
+      toast(madeNew
+        ? `Sheet saved — “${(body.account_name || '').trim()}” is now a customer.`
+        : id ? 'Information sheet updated.' : 'Information sheet saved.');
       show('cis');
       return saved;
     } catch (err) { alert('Error: ' + err.message); }
