@@ -513,3 +513,9 @@ label > input, label > select, label > .inputwrap { width: 100%; min-width: 0; }
   body { background: #fff; }
   .tablewrap, .card, .form { box-shadow: none; border-color: #999; }
 }
+
+/* result of a payment on account — says where the money actually went */
+.notice { padding: 10px 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; }
+.notice.ok { background: var(--good-bg); color: var(--good); border: 1px solid var(--good); }
+.notice.bad { background: var(--bad-bg); color: var(--bad); border: 1px solid var(--bad); }
+.notice ul { padding-left: 18px; }

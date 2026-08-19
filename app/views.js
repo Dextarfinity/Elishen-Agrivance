@@ -353,8 +353,9 @@ const views = {
 
   // ================= Payments ledger =================
   async payments() {
-    const [pays, sales, accounts] = await Promise.all([
+    const [pays, sales, accounts, owing] = await Promise.all([
       api.get('/api/payments'), api.get('/api/sales'), api.get('/api/accounts'),
+      api.get('/api/customers/balances'),
     ]);
     const open = sales.filter((s) => !String(s.status).toLowerCase().includes('cancel') && s.total - s.amount_paid > 0);
     const pre = window._payPrefill;
@@ -393,6 +394,32 @@ const views = {
           <button type="button" class="mini" id="paySigClear">Clear</button>
         </div>
         <button type="submit" class="primary">Record payment</button>
+      </form>
+      <h3 style="margin:22px 0 6px">Payment on account</h3>
+      <p class="hint" style="margin:0 0 8px">When a customer just hands over an amount rather than
+        settling a named invoice. It clears their oldest invoices first; anything left over is held
+        as credit on the account instead of being forced onto an invoice.</p>
+      <form id="acctPayForm" class="form">
+        <div class="grid3">
+          <label>Customer <select name="customer" required>
+            <option value="">— select customer —</option>
+            ${owing.map((c) => `<option value="${esc(c.customer)}">${esc(c.customer)} · owes ${fmt(c.balance)}${Number(c.credit) > 0 ? ` · credit ${fmt(c.credit)}` : ''}</option>`).join('')}
+          </select></label>
+          <label>Date <input type="date" name="date" value="${new Date().toISOString().slice(0, 10)}" required></label>
+          <label>Amount received <input type="number" name="amount" step="any" min="0.01" required></label>
+          <label>Account <select name="account_id"><option value="">—</option>
+            ${accounts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label>
+          <label>OR No. (optional)<input name="or_no" autocomplete="off"></label>
+          <label>Cheque status <select name="cheque_status">
+            <option value="">Not a cheque — counts as received</option>
+            <option value="Good">Good — cleared, counts as received</option>
+            <option value="On hold">On hold — not yet cleared</option>
+            <option value="Bounced">Bounced — returns to collectibles</option>
+          </select></label>
+          <label>Notes <input name="notes"></label>
+        </div>
+        <button type="submit" class="primary">Receive on account</button>
+        <div id="acctPayResult" style="margin-top:10px"></div>
       </form>
       <div class="cards" style="margin:14px 0">
         <div class="card green"><span>Total received (ledger)</span><strong>${fmt(totalReceived)}</strong></div>

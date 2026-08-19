@@ -1770,6 +1770,34 @@ function wire(view) {
         }
       };
       // OR No. live uniqueness check
+      // payment on account: an amount, not an invoice
+      const apf = document.getElementById('acctPayForm');
+      if (apf) apf.onsubmit = async (e) => {
+        e.preventDefault();
+        const f = Object.fromEntries(new FormData(apf));
+        const out = document.getElementById('acctPayResult');
+        try {
+          const r = await api.post('/api/customers/payment', {
+            customer: f.customer, date: f.date, amount: Number(f.amount),
+            account_id: f.account_id || null, or_no: f.or_no || null,
+            notes: f.notes || null, cheque_status: f.cheque_status || null,
+          });
+          // show where the money went before the view reloads
+          const rows = r.applied.map((a) => `<li>${a.sales_no} — ${fmt(a.amount)}`
+            + (a.still_open > 0.005 ? ` (${fmt(a.still_open)} still open)` : ' — settled') + '</li>').join('');
+          out.innerHTML = `<div class="notice ok"><strong>${fmt(r.received)} received from ${esc(r.customer)}.</strong>`
+            + (rows ? `<ul style="margin:6px 0 0 18px">${rows}</ul>` : '')
+            + (r.held_as_credit > 0.005
+                ? `<p style="margin:6px 0 0">${fmt(r.held_as_credit)} held as credit on the account —
+                   no open invoice left to apply it to.</p>` : '')
+            + '</div>';
+          setTimeout(() => show('payments'), 2500);
+        } catch (err) {
+          if (err.queued) { show('payments'); return; }
+          out.innerHTML = `<div class="notice bad">${esc(err.message)}</div>`;
+        }
+      };
+
       const orIn = pf.querySelector('[name=or_no]'), orOut = document.getElementById('orCheck');
       let t;
       orIn.addEventListener('input', () => {
