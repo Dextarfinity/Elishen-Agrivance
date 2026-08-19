@@ -514,6 +514,7 @@ function wireSalesActions() {
     form.account_id.value = p.account_id ?? '';
     form.notes.value = p.notes ?? '';
     form.payer_name.value = p.payer_name ?? p.received_by ?? '';
+    if (form.cheque_status) form.cheque_status.value = p.cheque_status ?? '';
     const sigInput = form.querySelector('[name=signature]');
     if (sigInput) sigInput.value = p.signature || '';
     form.dataset.version = p.version ?? '';
@@ -1760,6 +1761,7 @@ function wire(view) {
             date: f.date, amount: Number(f.amount),
             account_id: f.account_id || null, or_no: f.or_no || null, notes: f.notes || null,
             payer_name: f.payer_name || null, signature: f.signature || null,
+            cheque_status: f.cheque_status || null,
           });
           show('payments');
         } catch (err) {
@@ -1829,6 +1831,7 @@ function wire(view) {
             date: f.date, amount: Number(f.amount),
             account_id: f.account_id || null, or_no: f.or_no || null, notes: f.notes || null,
             payer_name: f.payer_name || null, signature: f.signature || null,
+            cheque_status: f.cheque_status || null,
             version: pef.dataset.version ? Number(pef.dataset.version) : undefined,
           });
           pem.classList.add('hidden');

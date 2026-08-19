@@ -286,6 +286,25 @@ async function bootstrapMarketingBilled() {
 }
 bootstrapMarketingBilled().catch((e) => console.error('Marketing-billed bootstrap failed:', e));
 
+// A cheque is a promise, not money. It only counts once it clears, so a payment
+// carries the state of its cheque and CLEARED is what every total is summed over.
+// Cash and transfers leave cheque_status null and are always cleared; a cheque on
+// hold or bounced is money that never arrived, so the invoice stays collectible.
+const CLEARED = `(p.cheque_status IS NULL OR p.cheque_status = 'Good')`;
+
+async function bootstrapChequeStatus() {
+  await pool.query(`ALTER TABLE payments
+    ADD COLUMN IF NOT EXISTS cheque_status text`);
+  await pool.query(`ALTER TABLE payments DROP CONSTRAINT IF EXISTS payments_cheque_status_ck`);
+  await pool.query(`ALTER TABLE payments ADD CONSTRAINT payments_cheque_status_ck
+    CHECK (cheque_status IS NULL OR cheque_status IN ('Good', 'On hold', 'Bounced'))`);
+
+  // every invoice's paid-to-date re-derived under the new rule
+  await pool.query(`UPDATE sales s SET amount_paid = COALESCE(
+    (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = s.id AND ${CLEARED}), 0)`);
+}
+bootstrapChequeStatus().catch((e) => console.error('Cheque-status bootstrap failed:', e));
+
 // Behind Cloudflare Tunnel every req.ip is localhost — prefer the edge-provided
 // client IP for rate limiting and audit trails (LAN hits fall back to req.ip).
 const clientIp = (req) => req.get('cf-connecting-ip') || req.ip;
@@ -778,7 +797,8 @@ app.put('/api/sales/:id/full', wrap(async (req, res) => {
     // paid-to-date always re-derives from the payments ledger
     await client.query(
       `UPDATE sales SET amount_paid = COALESCE(
-         (SELECT SUM(amount) FROM payments WHERE sale_id = $1), 0) WHERE id = $1`, [s.id]);
+         (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
+       WHERE id = $1`, [s.id]);
     await client.query('COMMIT');
     res.json({ sale: s, warnings });
   } catch (e) {
@@ -798,7 +818,7 @@ app.delete('/api/sales/:id', wrap(async (req, res) => {
 // ---------- payments ledger ----------
 const recomputePaid = (saleId) => q(
   `UPDATE sales SET amount_paid = COALESCE(
-     (SELECT SUM(amount) FROM payments WHERE sale_id = $1), 0)
+     (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
    WHERE id = $1 RETURNING *`, [saleId]);
 
 app.get('/api/payments', wrap(async (req, res) => {
@@ -814,14 +834,16 @@ app.get('/api/payments', wrap(async (req, res) => {
 
 // Record a payment against an invoice (ledger row + refresh cached amount_paid)
 app.post('/api/sales/:id/payments', wrap(async (req, res) => {
-  const { amount, account_id, date, or_no, notes, payer_name, signature } = req.body;
+  const { amount, account_id, date, or_no, notes, payer_name, signature, cheque_status } = req.body;
   if (!amount) return res.status(400).json({ error: 'amount required' });
   try {
     await q(
-      `INSERT INTO payments (sale_id, date, amount, account_id, or_no, notes, payer_name, signature)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      `INSERT INTO payments (sale_id, date, amount, account_id, or_no, notes, payer_name, signature,
+                             cheque_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
       [req.params.id, date || new Date().toISOString().slice(0, 10),
-       amount, account_id ?? null, or_no || null, notes ?? null, payer_name ?? null, signature ?? null]);
+       amount, account_id ?? null, or_no || null, notes ?? null, payer_name ?? null, signature ?? null,
+       cheque_status || null]);
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: `OR No. "${or_no}" is already used` });
     throw e;
@@ -833,16 +855,18 @@ app.post('/api/sales/:id/payments', wrap(async (req, res) => {
 
 // Edit a payment (OR No. added later from the booklet, date/amount/account fixes)
 app.put('/api/payments/:id', wrap(async (req, res) => {
-  const { amount, account_id, date, or_no, notes, payer_name, signature, version } = req.body;
+  const { amount, account_id, date, or_no, notes, payer_name, signature, version,
+          cheque_status } = req.body;
   if (!amount) return res.status(400).json({ error: 'amount required' });
   let rows;
   try {
     ({ rows } = await q(
       `UPDATE payments SET date = $2, amount = $3, account_id = $4, or_no = $5, notes = $6,
-              payer_name = $7, signature = $8, version = version + 1
+              payer_name = $7, signature = $8, cheque_status = $10, version = version + 1
        WHERE id = $1 AND ($9::int IS NULL OR version = $9::int) RETURNING sale_id`,
       [req.params.id, date || new Date().toISOString().slice(0, 10),
-       amount, account_id ?? null, or_no || null, notes ?? null, payer_name ?? null, signature ?? null, version ?? null]));
+       amount, account_id ?? null, or_no || null, notes ?? null, payer_name ?? null, signature ?? null,
+       version ?? null, cheque_status || null]));
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: `OR No. "${or_no}" is already used` });
     throw e;
@@ -1185,7 +1209,8 @@ app.post('/api/advances/:id/apply', wrap(async (req, res) => {
       [req.params.id, amt]);
     await client.query(
       `UPDATE sales SET amount_paid = COALESCE(
-         (SELECT SUM(amount) FROM payments WHERE sale_id = $1), 0) WHERE id = $1`, [sale_id]);
+         (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
+       WHERE id = $1`, [sale_id]);
     await client.query('COMMIT');
     res.json({ ok: true, remaining: remaining - amt });
   } catch (e) {

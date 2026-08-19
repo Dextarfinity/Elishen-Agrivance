@@ -375,9 +375,17 @@ const views = {
           <label>OR No. (manual — must be unique)
             <input name="or_no" autocomplete="off"><small id="orCheck"></small></label>
           <label>Payer name <input name="payer_name" placeholder="Printed name (optional)"></label>
+          <label>Cheque status <select name="cheque_status">
+            <option value="">Not a cheque — counts as received</option>
+            <option value="Good">Good — cleared, counts as received</option>
+            <option value="On hold">On hold — not yet cleared</option>
+            <option value="Bounced">Bounced — returns to collectibles</option>
+          </select></label>
           <label>Notes <input name="notes"></label>
           <input type="hidden" name="signature">
         </div>
+        <p class="hint" style="margin:6px 0 0">A cheque only counts as paid once it is
+          <strong>Good</strong>. On hold or bounced leaves the invoice collectible.</p>
         <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
           <div id="paySigPreview"><small style="color:var(--ink-2)">No signature captured yet.</small></div>
           <span style="flex:1"></span>
@@ -398,6 +406,10 @@ const views = {
         { key: 'customer', label: 'Customer' },
         { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
         { key: 'account', label: 'Account', render: (r) => esc(r.account ?? '-') },
+        { key: 'cheque_status', label: 'Cheque', render: (r) => r.cheque_status
+            ? `<span class="badge ${r.cheque_status === 'Good' ? 'green'
+                : r.cheque_status === 'Bounced' ? 'red' : 'amber'}">${esc(r.cheque_status)}</span>`
+            : '-' },
         { key: 'invoice_total', label: 'Invoice total', num: 1, render: (r) => fmt(r.invoice_total) },
         { key: 'amount_paid', label: 'Paid to date', num: 1, render: (r) => fmt(r.amount_paid) },
         { key: 'notes', label: 'Notes' },
@@ -421,6 +433,12 @@ const views = {
               <label>Amount <input type="number" name="amount" step="any" min="0.01" required></label>
               <label>Account <select name="account_id"><option value="">—</option>
                 ${accounts.map((a) => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></label>
+              <label>Cheque status <select name="cheque_status">
+                <option value="">Not a cheque — counts as received</option>
+                <option value="Good">Good — cleared, counts as received</option>
+                <option value="On hold">On hold — not yet cleared</option>
+                <option value="Bounced">Bounced — returns to collectibles</option>
+              </select></label>
               <label>Notes <input name="notes"></label>
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
