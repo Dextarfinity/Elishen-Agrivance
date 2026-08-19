@@ -270,8 +270,11 @@ const views = {
       if (d <= expCut && (!expBy[p.item_id] || d < expBy[p.item_id])) expBy[p.item_id] = d;
     });
     items.forEach((i) => { i.exp_soon = expBy[i.id] || null; });
-    const presets = (settings.term_presets || 'Cash,7 days,15 days,30 days,End of month')
+    // "1 up 1 down" is a running account: this order is settled when the next
+    // one is placed, so it carries no due date and often comes in part-paid.
+    const presets = (settings.term_presets || 'Cash,7 days,15 days,30 days,End of month,1 up 1 down')
       .split(',').map((s) => s.trim()).filter(Boolean);
+    if (!presets.some((p) => /1\s*up\s*1\s*down/i.test(p))) presets.push('1 up 1 down');
     const arMap = Object.fromEntries(arList.map((a) => [a.customer_key, Number(a.balance)]));
     window._saleData = { items, customers, presets, arMap, lines: [] };
     return `
@@ -279,7 +282,7 @@ const views = {
       <form id="saleForm" class="form">
         <div class="grid3">
           <label>Date <input type="date" name="date" value="${new Date().toISOString().slice(0, 10)}" required></label>
-          <label>Invoice # (manual — must be unique)
+          <label>Invoice # (next in series — editable)
             <input name="sales_no" required autocomplete="off">
             <small id="invCheck"></small></label>
           <label>Customer
@@ -306,6 +309,12 @@ const views = {
             <option value="cod">COD dealer (outright + COD disc.)</option>
           </select><small id="tierHint" class="checkok"></small></label>
         </div>
+        <label class="mktbox">
+          <input type="checkbox" name="billed_by_marketing" id="mktBilled">
+          <span><b>Billed by URC marketing</b> — the stock still leaves the warehouse and is
+            deducted, but URC pays for it, so this invoice is kept out of Elishen's income,
+            receivables, sales tax and commissions.</span>
+        </label>
         <h3>Items</h3>
         <button type="button" class="primary" id="openPicker">Add items…</button>
         <div id="lines"></div>

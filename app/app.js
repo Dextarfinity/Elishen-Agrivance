@@ -544,6 +544,10 @@ function wireSalesActions() {
     form.reset();
     form.sale_id.value = b.dataset.makedr;
     form.date.value = new Date().toISOString().slice(0, 10);
+    // DR numbers run in series too — filled in, still editable
+    api.get('/api/next_no?kind=dr')
+      .then((r) => { if (!form.dr_no.value.trim()) form.dr_no.value = r.next; })
+      .catch(() => {});
     const sale = (window._salesRows || []).find((s) => s.id === Number(b.dataset.makedr));
     document.getElementById('drModalTitle').textContent =
       `New Delivery Receipt — Invoice #${sale?.sales_no ?? ''} · ${sale?.customer ?? ''}`;
@@ -901,6 +905,8 @@ async function startEditSale(id) {
     }
   }
   f.due_date.value = s.due_date ? String(s.due_date).slice(0, 10) : '';
+  const mkt = document.getElementById('mktBilled');
+  if (mkt) mkt.checked = !!s.billed_by_marketing;
   // An invoice written before a product carried a per-bag discount opens showing
   // none, so editing an old sale would quietly undercut the customer. Fill the
   // current figure in — only now that the term is on the form, since the term is
@@ -1128,6 +1134,14 @@ function wire(view) {
 
   function wireNewsale() {
     const lines = window._saleData.lines;
+    // invoice numbers run in series: fill in the next one, still editable, and
+    // only when the field is empty so an edit in progress is never overwritten
+    const invIn = document.querySelector('#saleForm [name=sales_no]');
+    if (invIn && !invIn.value.trim() && !window._editSale) {
+      api.get('/api/next_no?kind=invoice')
+        .then((r) => { if (!invIn.value.trim()) invIn.value = r.next; })
+        .catch(() => {});
+    }
     // URC tier pricing: SRP, or SRP less the item's stored outright (and COD) discounts
     const tierPriceOf = (i) => {
       const srp = Number(i.sales_price) || 0;
@@ -1290,6 +1304,9 @@ function wire(view) {
       customWrap.classList.toggle('hidden', t !== 'Custom…');
       if (!dateIn.value) return;
       const m = t.match(/^(\d+)\s*days?$/i);
+      // "1 up 1 down" settles when the customer's next order is placed, so there
+      // is no calendar due date to compute and the balance simply stays open
+      if (/1\s*up\s*1\s*down/i.test(t)) { dueIn.value = ''; return; }
       if (t.toLowerCase() === 'cash') {
         dueIn.value = dateIn.value;
         // cash sale = paid in full at the counter
@@ -1427,6 +1444,7 @@ function wire(view) {
             store_farm: f.store_farm || null, term: f.term || null,
             due_date: f.due_date || null, contact_no: f.contact_no || null,
             account_id: f.account_id || null, sales_rep_id: f.sales_rep_id || null,
+            billed_by_marketing: !!document.getElementById('mktBilled')?.checked,
             subtotal, tax_pct: Number(f.tax_pct) || 0, tax_amount: tax,
             discount_pct: Number(f.discount_pct) || 0, discount: lineDisc + disc,
             total: subtotal + tax - lineDisc - disc,
@@ -1444,6 +1462,8 @@ function wire(view) {
           ...f,
           due_date: f.due_date || null,
           account_id: f.account_id || null, sales_rep_id: f.sales_rep_id || null,
+          // a checkbox absent from the form data reads as unchecked, never "on"
+          billed_by_marketing: !!document.getElementById('mktBilled')?.checked,
           subtotal, tax_amount: tax, discount: lineDisc + disc,
           total: subtotal + tax - lineDisc - disc,
           amount_paid: Number(f.amount_paid) || 0,
@@ -2508,6 +2528,34 @@ document.addEventListener('click', (e) => {
   const key = d.pgprev || d.pgnext;
   window._pg[key].page += d.pgnext ? 1 : -1;
   repageTable(key);
+});
+
+// ---- purchase orders: stock follows the order as it is typed ----
+// What is ordered is normally what arrives, so the received quantity mirrors the
+// ordered one and the status jumps to Received — which is what makes the items
+// count into inventory straight away instead of waiting for a separate Receive.
+// Touching the received field by hand stops the mirroring for that entry, so a
+// short or partial delivery is still recorded truthfully.
+document.addEventListener('input', (e) => {
+  const t = e.target;
+  if (!t || !t.name || (t.name !== 'purchase_qty' && t.name !== 'received_qty')) return;
+  const form = t.closest('form');
+  if (!form) return;
+  const ordered = form.querySelector('[name=purchase_qty]');
+  const received = form.querySelector('[name=received_qty]');
+  if (!ordered || !received) return;
+  if (t === received) { received.dataset.touched = '1'; return; }
+  if (received.dataset.touched === '1') return;
+  received.value = ordered.value;
+  const status = form.querySelector('[name=status]');
+  if (status && Number(ordered.value) > 0 && [...status.options].some((o) => o.value === 'Received')) {
+    status.value = 'Received';
+  }
+  const recvDate = form.querySelector('[name=received_date]');
+  if (recvDate && !recvDate.value) {
+    const od = form.querySelector('[name=order_date]');
+    recvDate.value = (od && od.value) || new Date().toISOString().slice(0, 10);
+  }
 });
 
 // ---- per-section print (delegated, so it works on re-renders and inside modals) ----

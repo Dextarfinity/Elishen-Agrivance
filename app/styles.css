@@ -318,6 +318,11 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
   font-size: 12.5px; }
 .tblfilter input[type=date] { width: auto; padding: 5px 8px; font-size: 13px; }
 .tblmatch { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+/* "billed by URC marketing" — a money-affecting switch, so it reads as a notice */
+.mktbox { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px;
+  background: #fdf6e3; border: 1px solid #e8d9a8; border-left: 4px solid #e3a71f;
+  border-radius: var(--radius); padding: 11px 14px; font-size: 12.5px; line-height: 1.45; }
+.mktbox input { width: 18px; height: 18px; margin-top: 1px; flex: 0 0 auto; }
 /* the section's own print button sits at the far end of its search bar */
 .tblfilter .secprint { margin-left: auto; font-weight: 600; white-space: nowrap; }
 .pgbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;

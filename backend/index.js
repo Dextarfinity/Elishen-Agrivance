@@ -237,6 +237,55 @@ async function bootstrapFeedDiscounts() {
 }
 bootstrapFeedDiscounts().catch((e) => console.error('Feed-discount bootstrap failed:', e));
 
+// ---------- sales billed by URC marketing ----------
+// Goods URC's marketing arm pays for: the stock leaves the shelf and must be
+// deducted, but the money is never Elishen's, so the invoice has to stay out of
+// income, receivables, sales tax and commissions. Stock is untouched here on
+// purpose — v_item_stock counts the sale lines either way, which is the point.
+async function bootstrapMarketingBilled() {
+  await pool.query(`ALTER TABLE sales
+    ADD COLUMN IF NOT EXISTS billed_by_marketing boolean NOT NULL DEFAULT false`);
+
+  await pool.query(`
+    CREATE OR REPLACE VIEW v_monthly_summary AS
+    SELECT to_char(mo.month::timestamptz, 'YYYY-MM') AS month,
+           COALESCE(inc.total, 0) AS total_income,
+           COALESCE(exp.total, 0) AS total_expenses,
+           COALESCE(inc.total, 0) - COALESCE(exp.total, 0) AS profit_loss
+      FROM (SELECT DISTINCT date_trunc('month', t.d::timestamptz)::date AS month
+              FROM (SELECT date AS d FROM sales UNION ALL SELECT date FROM expenses) t) mo
+      LEFT JOIN (SELECT date_trunc('month', date::timestamptz)::date AS month, sum(total) AS total
+                   FROM sales WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing
+                  GROUP BY 1) inc ON inc.month = mo.month
+      LEFT JOIN (SELECT date_trunc('month', date::timestamptz)::date AS month,
+                        sum(amount - tax + shipping + fees) AS total
+                   FROM expenses GROUP BY 1) exp ON exp.month = mo.month
+     ORDER BY mo.month`);
+
+  // nothing is owed by the customer on a marketing-billed invoice
+  await pool.query(`
+    CREATE OR REPLACE VIEW v_accounts_receivable AS
+    SELECT id, sales_no, date, customer, store_farm, term, due_date, total, amount_paid,
+           total - amount_paid AS balance,
+           GREATEST(0, CURRENT_DATE - COALESCE(due_date, date)) AS days_overdue
+      FROM sales s
+     WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing
+       AND (total - amount_paid) > 0`);
+
+  // no commission on goods the rep did not sell for Elishen's account
+  await pool.query(`
+    CREATE OR REPLACE VIEW v_rep_commissions AS
+    SELECT r.id, r.name, r.commission_rate,
+           count(DISTINCT s.id) AS sales_count,
+           COALESCE(sum(s.total), 0) AS total_sales,
+           round(COALESCE(sum(s.total), 0) * r.commission_rate, 2) AS commission
+      FROM sales_reps r
+      LEFT JOIN sales s ON s.sales_rep_id = r.id
+             AND s.status NOT ILIKE '%cancel%' AND NOT s.billed_by_marketing
+     GROUP BY r.id, r.name, r.commission_rate`);
+}
+bootstrapMarketingBilled().catch((e) => console.error('Marketing-billed bootstrap failed:', e));
+
 // Behind Cloudflare Tunnel every req.ip is localhost — prefer the edge-provided
 // client IP for rate limiting and audit trails (LAN hits fall back to req.ip).
 const clientIp = (req) => req.get('cf-connecting-ip') || req.ip;
@@ -594,7 +643,8 @@ app.post('/api/sales', wrap(async (req, res) => {
     await client.query('BEGIN');
     const cols = ['sales_no', 'date', 'customer', 'store_farm', 'term', 'due_date',
       'contact_no', 'payment_mode', 'account_id', 'sales_rep_id', 'subtotal',
-      'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'amount_paid', 'status']
+      'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'amount_paid', 'status',
+    'billed_by_marketing']
       .filter((c) => c in sale);
     const ph = cols.map((_, i) => `$${i + 1}`).join(',');
     const { rows } = await client.query(
@@ -668,7 +718,8 @@ app.post('/api/sales', wrap(async (req, res) => {
 app.put('/api/sales/:id', wrap(async (req, res) => {
   const cols = ['sales_no', 'date', 'customer', 'store_farm', 'term', 'due_date',
     'contact_no', 'payment_mode', 'account_id', 'sales_rep_id', 'subtotal',
-    'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'amount_paid', 'status']
+    'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'amount_paid', 'status',
+    'billed_by_marketing']
     .filter((c) => c in req.body);
   const sets = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
   const { rows } = await q(
@@ -696,7 +747,8 @@ app.put('/api/sales/:id/full', wrap(async (req, res) => {
     }
     const cols = ['sales_no', 'date', 'customer', 'store_farm', 'term', 'due_date',
       'contact_no', 'payment_mode', 'account_id', 'sales_rep_id', 'subtotal',
-      'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'status']
+      'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'status',
+      'billed_by_marketing']
       .filter((c) => c in sale);
     const sets = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
     const { rows } = await client.query(
@@ -827,6 +879,35 @@ app.get('/api/check/or', wrap(async (req, res) => {
 app.get('/api/check/dr', wrap(async (req, res) => {
   const { rows } = await q('SELECT 1 FROM deliveries WHERE dr_no = $1', [req.query.no ?? '']);
   res.json({ exists: rows.length > 0 });
+}));
+
+// ---------- the next invoice / DR number, issued in series ----------
+// Numbering is read back off the books rather than kept in a counter, so it
+// survives a restore and cannot drift from what was actually issued: take the
+// digits out of every number on file, use the highest, add one. The format
+// follows the last number issued (prefix and width), so ML-098 -> ML-099 and
+// DR 00305 -> DR 00306 without anything to configure. Still editable in the
+// form — this fills the field in, it does not lock it.
+async function nextSerial(kind) {
+  const [table, col] = kind === 'dr' ? ['deliveries', 'dr_no'] : ['sales', 'sales_no'];
+  const { rows } = await q(`
+    SELECT COALESCE(MAX(NULLIF(regexp_replace(${col}, '\\D', '', 'g'), '')::bigint), 0) AS n
+      FROM ${table}`);
+  const next = Number(rows[0].n) + 1;
+  // copy the shape of the most recently issued number
+  const { rows: last } = await q(`
+    SELECT ${col} AS v FROM ${table}
+     WHERE ${col} ~ '[0-9]'
+     ORDER BY NULLIF(regexp_replace(${col}, '\\D', '', 'g'), '')::bigint DESC NULLS LAST
+     LIMIT 1`);
+  const sample = last.length ? String(last[0].v) : (kind === 'dr' ? 'DR 00000' : 'ML-000');
+  const digits = (sample.match(/\d+/) || ['000'])[0];
+  const prefix = sample.slice(0, sample.indexOf(digits));
+  return { next: prefix + String(next).padStart(digits.length, '0'), number: next };
+}
+app.get('/api/next_no', wrap(async (req, res) => {
+  const kind = req.query.kind === 'dr' ? 'dr' : 'invoice';
+  res.json(await nextSerial(kind));
 }));
 
 // ---------- delivery receipts ----------
