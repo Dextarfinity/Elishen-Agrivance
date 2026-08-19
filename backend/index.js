@@ -718,8 +718,16 @@ app.post('/api/sales', wrap(async (req, res) => {
          VALUES ($1,$2,$3,$4,$5,'Paid at sale')`,
         [s.id, s.date, s.amount_paid, s.account_id, req.body.or_no || null]);
     }
+    // money already sitting on the customer's account settles this invoice now
+    const fromCredit = await spendCreditOnSale(client, s.id);
+    if (fromCredit.length) {
+      const t = fromCredit.reduce((a, c) => a + c.amount, 0);
+      warnings.push(`${fmtMoney(t)} of credit held on ${s.customer}'s account was applied to this invoice.`);
+      const { rows: fresh } = await client.query('SELECT amount_paid FROM sales WHERE id = $1', [s.id]);
+      s.amount_paid = fresh[0].amount_paid;
+    }
     await client.query('COMMIT');
-    res.status(201).json({ sale: s, warnings });
+    res.status(201).json({ sale: s, warnings, credit_applied: fromCredit });
   } catch (e) {
     await client.query('ROLLBACK');
     if (e.code === '23505' && String(e.constraint).includes('sales_no')) {
@@ -800,8 +808,16 @@ app.put('/api/sales/:id/full', wrap(async (req, res) => {
       `UPDATE sales SET amount_paid = COALESCE(
          (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
        WHERE id = $1`, [s.id]);
+    // money already sitting on the customer's account settles this invoice now
+    const fromCredit = await spendCreditOnSale(client, s.id);
+    if (fromCredit.length) {
+      const t = fromCredit.reduce((a, c) => a + c.amount, 0);
+      warnings.push(`${fmtMoney(t)} of credit held on ${s.customer}'s account was applied to this invoice.`);
+      const { rows: fresh } = await client.query('SELECT amount_paid FROM sales WHERE id = $1', [s.id]);
+      s.amount_paid = fresh[0].amount_paid;
+    }
     await client.query('COMMIT');
-    res.json({ sale: s, warnings });
+    res.json({ sale: s, warnings, credit_applied: fromCredit });
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;
@@ -817,6 +833,41 @@ app.delete('/api/sales/:id', wrap(async (req, res) => {
 }));
 
 // ---------- payments ledger ----------
+// Credit held on a customer's account is money already received, so an invoice
+// they owe is settled from it straight away rather than waiting to be applied by
+// hand. Oldest credit first, never more than the invoice's balance.
+async function spendCreditOnSale(client, saleId) {
+  const { rows: sale } = await client.query(
+    `SELECT id, customer, total - amount_paid AS balance FROM sales
+      WHERE id = $1 AND status NOT ILIKE '%cancel%' AND NOT billed_by_marketing`, [saleId]);
+  if (!sale.length || Number(sale[0].balance) <= 0.005) return [];
+  const { rows: credits } = await client.query(
+    `SELECT id, amount - applied AS remaining, account_id FROM customer_advances
+      WHERE UPPER(TRIM(customer)) = UPPER(TRIM($1)) AND amount - applied > 0
+      ORDER BY date, id FOR UPDATE`, [sale[0].customer]);
+  let owed = Number(sale[0].balance);
+  const used = [];
+  for (const c of credits) {
+    if (owed <= 0.005) break;
+    const take = Math.min(Number(c.remaining), owed);
+    owed = +(owed - take).toFixed(2);
+    await client.query(
+      `INSERT INTO payments (sale_id, date, amount, account_id, notes)
+       VALUES ($1, CURRENT_DATE, $2, $3, $4)`,
+      [saleId, take, c.account_id,
+       `Settled from credit held on the account (advance #${c.id})`]);
+    await client.query(
+      'UPDATE customer_advances SET applied = applied + $2, version = version + 1 WHERE id = $1',
+      [c.id, take]);
+    used.push({ advance_id: c.id, amount: take });
+  }
+  if (used.length) await client.query(
+    `UPDATE sales SET amount_paid = COALESCE(
+       (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
+     WHERE id = $1`, [saleId]);
+  return used;
+}
+
 const fmtMoney = (n) => 'P' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 });
 const recomputePaid = (saleId) => q(
   `UPDATE sales SET amount_paid = COALESCE(
