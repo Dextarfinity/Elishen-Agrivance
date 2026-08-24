@@ -2530,6 +2530,12 @@ document.addEventListener('change', (e) => {
     window._pg[key][d.pgfrom ? 'from' : 'to'] = e.target.value;
     window._pg[key].page = 0;
     repageTable(key);
+  } else if (d.showitems) {
+    // Receivables: hiding the item lines collapses the list to one row an
+    // invoice -- who owes, how much, how late. Delegated, so the checkbox keeps
+    // working after the table re-renders; the choice sticks while the app is open.
+    window._arShowItems = e.target.checked;
+    show('receivables');
   }
 });
 // live text filter (debounced; keeps focus and caret through the re-render)

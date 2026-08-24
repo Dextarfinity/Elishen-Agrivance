@@ -2,6 +2,10 @@
 const fmt = (n) => (n == null ? '-' :
   (window._currency || '') + Number(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+// sentinel for the Receivables customer picker: show every customer's collectibles
+// at once rather than one at a time. Not a customer_key, so it can never collide.
+const AR_ALL = '__all__';
+window.AR_ALL = AR_ALL;
 const d10 = (v) => (v ? esc(String(v).slice(0, 10)) : '-');
 
 // ---- product aliases: the shorthand the warehouse writes on order slips ----
@@ -45,7 +49,7 @@ function rowSearchText(r, cols) {
 }
 
 function tableShell(key) {
-  const { rows: allRows, cols } = window._tblCache[key];
+  const { rows: allRows, cols, extra } = window._tblCache[key];
   const pg = window._pg[key] || (window._pg[key] = { page: 0, size: 50, q: '', from: '', to: '' });
   pg.q = pg.q ?? ''; pg.from = pg.from ?? ''; pg.to = pg.to ?? '';
 
@@ -78,6 +82,7 @@ function tableShell(key) {
       ${(pg.q || pg.from || pg.to) ? `
         <button type="button" class="mini" data-pgclear="${key}">Clear</button>
         <span class="tblmatch">${rows.length} of ${allRows.length} match</span>` : ''}
+      ${extra || ''}
       <button type="button" class="mini secprint" data-secprint="${key}"
         title="Print this section">&#128424;<span class="secprint-t"> Print</span></button>
     </div>`;
@@ -101,11 +106,13 @@ function tableShell(key) {
   return `<div class="tablewrap" data-tbl="${key}">${filterBar}${tableInnerHTML(slice, cols)}${pager}</div>`;
 }
 
-function table(rows, cols) {
+// opts.extra is a control the calling view wants beside this table's own search
+// and date range -- kept in the cache so repaging and the soft refresh keep it.
+function table(rows, cols, opts = {}) {
   if (!rows.length) return '<p class="empty">No records yet.</p>';
   window._tblSeq = (window._tblSeq || 0) + 1;
   const key = `${window._view}:${window._tblSeq}`;
-  window._tblCache[key] = { rows, cols };
+  window._tblCache[key] = { rows, cols, extra: opts.extra || '' };
   return tableShell(key);
 }
 
@@ -716,17 +723,40 @@ const views = {
         <div class="card amber"><span>31–60 days overdue</span><strong>${fmt(buckets.b60)}</strong></div>
         <div class="card red"><span>60+ days overdue</span><strong>${fmt(buckets.b90)}</strong></div>
       </div>`;
-    const sel = window._arCustomer && byCust.find((c) => c.customer_key === window._arCustomer)
-      ? window._arCustomer : (byCust[0]?.customer_key ?? null);
+    // AR_ALL fetches every customer's open invoices at once, so the whole
+    // collectible list can be read and printed without stepping through the
+    // dropdown one customer at a time.
+    const known = (k) => k === AR_ALL || byCust.some((c) => c.customer_key === k);
+    const sel = known(window._arCustomer) ? window._arCustomer : (byCust[0]?.customer_key ?? null);
     window._arCustomer = sel;
-    const selRow = byCust.find((c) => c.customer_key === sel);
+    const showAll = sel === AR_ALL;
+    const selRow = showAll ? null : byCust.find((c) => c.customer_key === sel);
+    const isOpen = (s) => !String(s.status).toLowerCase().includes('cancel')
+      && Number(s.total) - Number(s.amount_paid) > 0;
+    // item lines are on by default; collectors turn them off to see only what is owed
+    const showItems = window._arShowItems !== false;
     let detail = '<p class="empty">No outstanding receivables.</p>';
-    if (selRow) {
-      const invoices = (await api.get(`/api/sales?customer=${encodeURIComponent(selRow.customer)}`))
-        .filter((s) => !String(s.status).toLowerCase().includes('cancel') && s.total - s.amount_paid > 0);
+    if (showAll || selRow) {
+      const invoices = (showAll
+        ? await api.get('/api/sales')
+        : await api.get(`/api/sales?customer=${encodeURIComponent(selRow.customer)}`)).filter(isOpen);
+      // grouped by customer, oldest debt first, so the follow-up list reads top-down
+      if (showAll) {
+        invoices.sort((a, b) => String(a.customer ?? '').localeCompare(String(b.customer ?? ''))
+          || String(a.date).localeCompare(String(b.date)));
+      }
       window._arInvoices = invoices;
-      // flatten to one row per item line, like the sheet
-      const lines = invoices.flatMap((s) => (s.items.length ? s.items : [{}]).map((it, ix) => ({ s, it, first: ix === 0 })));
+      // With items shown this reads like the sheet: one row per item line, invoice
+      // details on the first of them. With items hidden it collapses to one row an
+      // invoice -- who owes, how much, how late -- which is what collecting needs.
+      const lines = showItems
+        ? invoices.flatMap((s) =>
+            ((s.items && s.items.length) ? s.items : [{}]).map((it, ix) => ({ s, it, first: ix === 0 })))
+        : invoices.map((s) => ({ s, it: {}, first: true }));
+      const itemCols = [
+        { key: 'item', label: 'Item', render: (l) => esc(l.it.item ?? '') },
+        { key: 'qty', label: 'Qty', num: 1, render: (l) => l.it.qty != null ? Number(l.it.qty) : '' },
+      ];
       detail = table(lines, [
         { key: 'no', label: 'Sales #', render: (l) => l.first ? esc(l.s.sales_no) : '' },
         { key: 'date', label: 'Date', render: (l) => l.first ? d10(l.s.date) : '' },
@@ -734,34 +764,54 @@ const views = {
         { key: 'farm', label: 'Stores/Farms', render: (l) => l.first ? esc(l.s.store_farm ?? '') : '' },
         { key: 'term', label: 'Term', render: (l) => l.first ? esc(l.s.term ?? '') : '' },
         { key: 'mode', label: 'Payment', render: (l) => l.first ? esc(l.s.payment_mode ?? '') : '' },
-        { key: 'item', label: 'Item', render: (l) => esc(l.it.item ?? '') },
-        { key: 'qty', label: 'Qty', num: 1, render: (l) => l.it.qty != null ? Number(l.it.qty) : '' },
+        ...(showItems ? itemCols : []),
         { key: 'total', label: 'Invoice total', num: 1, render: (l) => l.first ? fmt(l.s.total) : '' },
-        { key: 'bal', label: 'Balance', num: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
+        // what has already been received (cleared payments only -- a held or
+        // bounced cheque is not money yet), shown so the gap to "To pay" is plain
+        { key: 'paid', label: 'Already paid', num: 1, render: (l) => !l.first ? ''
+            : (Number(l.s.amount_paid) ? `<span class="paidcell">${fmt(l.s.amount_paid)}</span>` : '—') },
+        { key: 'bal', label: 'To pay', num: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
         { key: 'due', label: 'Days overdue', num: 1, render: (l) => {
             if (!l.first) return '';
             const d = Math.max(0, Math.floor((Date.now() - new Date(l.s.due_date || l.s.date)) / 86400000));
             return d > 0 ? `<span class="badge ${d > 30 ? 'red' : 'amber'}">${d}</span>` : '0';
           } },
         { key: '_a', label: '', render: (l) => l.first ? `<button type="button" class="mini" data-pay="${l.s.id}">Pay</button>` : '' },
-      ]);
+      ], { extra: `<label class="tglbox" title="Hide the item lines to see only what each invoice still owes">
+          <input type="checkbox" data-showitems="1" ${showItems ? 'checked' : ''}> Show items ordered</label>` });
+      // The figure being collected, spelled out under the list: invoiced, less what
+      // has already come in, leaves what is still owed. Only the last is collectible.
+      const sum = (f) => invoices.reduce((a, s) => a + f(s), 0);
+      const invoiced = sum((s) => Number(s.total));
+      const paid = sum((s) => Number(s.amount_paid));
+      detail += `<p class="artotals">
+        ${invoices.length} unpaid invoice(s) &middot; invoiced ${fmt(invoiced)}
+        ${paid ? `&minus; already paid ${fmt(paid)}` : ''}
+        &middot; <b>to pay: ${fmt(invoiced - paid)}</b></p>`;
+      if (!invoices.length) detail = '<p class="empty">No outstanding receivables.</p>';
     }
     return `<h2>Accounts Receivable</h2>
       ${agingCards}
       <div class="arhead">
         <label>Customer <select id="arCustomer">
+          <option value="${AR_ALL}" ${showAll ? 'selected' : ''}>All customers — every collectible</option>
           ${byCust.map((c) => `<option value="${esc(c.customer_key)}" ${c.customer_key === sel ? 'selected' : ''}>${esc(c.customer)}</option>`).join('')}
         </select></label>
-        <button type="button" class="mini add" id="soaBtn"
-          title="Statement of Account — invoices, payments, running balance, aging">Print SOA</button>
-        ${(() => {
+        ${showAll ? '' : `<button type="button" class="mini add" id="soaBtn"
+          title="Statement of Account — invoices, payments, running balance, aging">Print SOA</button>`}
+        ${showAll ? '' : (() => {
           const c = custRows.find((x) => x.name.trim().toUpperCase() === (selRow?.customer || '').trim().toUpperCase());
           return c ? `<button type="button" class="mini" data-cissheet="${c.id}" data-cisname="${esc(c.name)}"
             title="Customer Information Sheet on file">${cisSheetIds.has(c.id)
               ? 'Information sheet' : '+ Information sheet'}</button>` : '';
         })()}
-        <div class="card amber arcard"><span>${esc(selRow?.customer ?? 'Total')} — outstanding</span>
-          <strong>${fmt(selRow?.balance ?? 0)}</strong></div>
+        <div class="card amber arcard">
+          <span>${showAll
+            ? `${byCust.length} customer(s) — outstanding`
+            : `${esc(selRow?.customer ?? 'Total')} — outstanding`}</span>
+          <strong>${fmt(showAll
+            ? byCust.reduce((a, c) => a + Number(c.balance), 0)
+            : (selRow?.balance ?? 0))}</strong></div>
         <div class="card arcard"><span>All customers</span>
           <strong>${fmt(byCust.reduce((a, c) => a + Number(c.balance), 0))}</strong></div>
       </div>

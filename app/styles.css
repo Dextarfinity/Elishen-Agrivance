@@ -256,6 +256,7 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
 .arhead label { min-width: 250px; }
 .arcard { min-width: 210px; }
 
+
 /* ---------- Stock take ---------- */
 .adjcell { font-variant-numeric: tabular-nums; }
 .adjcell.pos { color: var(--good); font-weight: 700; }
@@ -318,13 +319,39 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
   font-size: 12.5px; }
 .tblfilter input[type=date] { width: auto; padding: 5px 8px; font-size: 13px; }
 .tblmatch { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+/* Receivables: money already received reads as settled, so the eye goes to what
+   is still owed. The running line under the list wraps rather than overflowing. */
+.paidcell { color: var(--good, #1e5c28); font-variant-numeric: tabular-nums; }
+.artotals { font-size: 12.5px; color: var(--ink-2); font-weight: 600;
+  text-align: right; margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px;
+  justify-content: flex-end; }
 /* "billed by URC marketing" — a money-affecting switch, so it reads as a notice */
 .mktbox { display: flex; gap: 10px; align-items: flex-start; margin: 4px 0 14px;
   background: #fdf6e3; border: 1px solid #e8d9a8; border-left: 4px solid #e3a71f;
   border-radius: var(--radius); padding: 11px 14px; font-size: 12.5px; line-height: 1.45; }
 .mktbox input { width: 18px; height: 18px; margin-top: 1px; flex: 0 0 auto; }
+/* a view's own switch in the filter bar (e.g. Receivables' "Show items ordered").
+   It never grows, and wraps to its own line before anything is pushed off-screen. */
+.tblfilter .tglbox { flex: 0 0 auto; display: flex; align-items: center; gap: 6px;
+  white-space: nowrap; font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+  cursor: pointer; user-select: none; }
+.tblfilter .tglbox input { width: 15px; height: 15px; margin: 0; flex: 0 0 auto; cursor: pointer; }
 /* the section's own print button sits at the far end of its search bar */
 .tblfilter .secprint { margin-left: auto; font-weight: 600; white-space: nowrap; }
+/* Nothing in the filter bar may push the table sideways: every child may shrink,
+   and on smaller screens the search claims its own row so the date range, the
+   switch and Print wrap underneath instead of overflowing. */
+.tblfilter > * { min-width: 0; }
+@media (max-width: 720px) {
+  .tblfilter { gap: 8px 10px; padding: 10px 12px; }
+  .tblfilter input[type=search] { flex: 1 1 100%; max-width: none; }
+  .tblfilter input[type=date] { flex: 1 1 auto; min-width: 0; }
+  .tblfilter label { flex: 1 1 auto; }
+}
+@media (max-width: 430px) {
+  .tblfilter .tglbox { flex: 1 1 100%; }   /* its own row, clear of the dates */
+  .tblfilter input[type=date] { font-size: 12.5px; padding: 5px 6px; }
+}
 .pgbar { display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
   padding: 9px 14px; border-top: 1px solid var(--border);
   font-size: 12.5px; color: var(--ink-2); background: var(--surface-2); }
