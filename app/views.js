@@ -2435,11 +2435,20 @@ const views = {
 
   // ================= Reports =================
   async reports() {
-    const [ar, tax, comms, itemSales, allSales, reps] = await Promise.all([
-      api.get('/api/reports/ar_by_customer'), api.get('/api/reports/sales_tax'),
-      api.get('/api/reports/rep_commissions'), api.get('/api/reports/monthly_item_sales'),
-      api.get('/api/sales'), api.get('/api/sales_reps'),
-    ]);
+    const [ar, tax, comms, itemSales, allSales, reps, stock,
+           payments, deliveries, purchases, acctBal, vendors, monthly, arOpen, custAdv,
+           manualInv, customersAll, expensesAll, attendanceAll, payrollAll, visitsAll, claimsAll] =
+      await Promise.all([
+        api.get('/api/reports/ar_by_customer'), api.get('/api/reports/sales_tax'),
+        api.get('/api/reports/rep_commissions'), api.get('/api/reports/monthly_item_sales'),
+        api.get('/api/sales'), api.get('/api/sales_reps'), api.get('/api/reports/item_stock'),
+        api.get('/api/payments'), api.get('/api/deliveries'), api.get('/api/purchases'),
+        api.get('/api/reports/account_balances'), api.get('/api/reports/vendor_performance'),
+        api.get('/api/reports/monthly_summary'), api.get('/api/reports/accounts_receivable'),
+        api.get('/api/customer_advances'), api.get('/api/manual_inventory'),
+        api.get('/api/customers'), api.get('/api/expenses'), api.get('/api/attendance'),
+        api.get('/api/payroll_runs'), api.get('/api/store_visits'), api.get('/api/claims'),
+      ]);
     window._salesForExport = allSales;
     // ---- daily sales summary: "how did today go" ----
     const day = window._dailyDate || (window._dailyDate = new Date().toLocaleDateString('en-CA'));
@@ -2488,9 +2497,412 @@ const views = {
         <small style="color:var(--ink-2)">Date, invoice no., customer, VATable/exempt, tax, total,
           paid, status — blank dates export everything.</small>
       </div>`;
+    // ---- what is left on the shelf, summarised before it is itemised ----
+    // Every other stock view answers "this product"; a report has to answer
+    // "the whole shop", so the category roll-up comes first and the product
+    // list sits underneath it for anyone who needs the detail.
+    const NNUM = (v) => (v == null || isNaN(Number(v))) ? 0 : Number(v);
+    const stockRows = (stock || []).map((r) => ({
+      ...r,
+      onHand: NNUM(r.on_hand),
+      capital: NNUM(r.on_hand) * NNUM(r.cost),
+      retail: NNUM(r.on_hand) * NNUM(r.sales_price),
+    }));
+    const inStock = stockRows.filter((r) => r.onHand > 0);
+    const byCat = {};
+    stockRows.forEach((r) => {
+      const c = r.category || '(uncategorised)';
+      byCat[c] ??= { cat: c, products: 0, stocked: 0, units: 0, capital: 0, retail: 0, out: 0, low: 0 };
+      const g = byCat[c];
+      g.products += 1;
+      if (r.onHand > 0) { g.stocked += 1; g.units += r.onHand; }
+      g.capital += r.capital; g.retail += r.retail;
+      if (r.status === 'Out of Stock') g.out += 1;
+      else if (r.status === 'Low Stock') g.low += 1;
+    });
+    const catRows = Object.values(byCat).sort((a, b) => b.capital - a.capital);
+    const tCapital = catRows.reduce((a, c) => a + c.capital, 0);
+    const tRetail = catRows.reduce((a, c) => a + c.retail, 0);
+    const tOut = catRows.reduce((a, c) => a + c.out, 0);
+    const tLow = catRows.reduce((a, c) => a + c.low, 0);
+    const needsAttention = stockRows
+      .filter((r) => r.status === 'Out of Stock' || r.status === 'Low Stock')
+      .sort((a, b) => a.onHand - b.onHand);
+
+    const stockSection = `
+      <h3>Stock on hand</h3>
+      <p class="empty" style="margin:2px 0 10px">What is left across the whole shop, by category first.
+        <b>Capital</b> is what the stock cost; <b>retail</b> is what it would bring in at the published
+        price, so the gap is the profit still sitting on the shelf.</p>
+      <div class="cards" style="margin-bottom:12px">
+        <div class="card"><span>Products stocked</span>
+          <strong>${inStock.length}<small style="font-size:12px;font-weight:500"> of ${stockRows.length}</small></strong></div>
+        <div class="card amber"><span>Capital on the shelf</span><strong>${fmt(tCapital)}</strong></div>
+        <div class="card green"><span>Retail value</span><strong>${fmt(tRetail)}</strong></div>
+        <div class="card ${tOut ? 'red' : 'green'}"><span>Out of stock</span><strong>${tOut}</strong></div>
+        <div class="card ${tLow ? 'amber' : 'green'}"><span>Low stock</span><strong>${tLow}</strong></div>
+      </div>
+      <h4 style="margin:10px 0 4px">By category</h4>
+      ${table(catRows, [
+        { key: 'cat', label: 'Category', render: (r) => `<b>${esc(r.cat)}</b>` },
+        { key: 'stocked', label: 'Products with stock', num: 1,
+          render: (r) => `${r.stocked} <small style="color:var(--ink-2)">of ${r.products}</small>` },
+        { key: 'units', label: 'Units on hand', num: 1, render: (r) => Number(r.units).toLocaleString() },
+        { key: 'capital', label: 'Capital', num: 1, render: (r) => fmt(r.capital) },
+        { key: 'retail', label: 'Retail value', num: 1, render: (r) => `<strong>${fmt(r.retail)}</strong>` },
+        { key: 'margin', label: 'Profit on shelf', num: 1, render: (r) => fmt(r.retail - r.capital) },
+        { key: 'out', label: 'Out', num: 1, render: (r) => r.out
+            ? `<span class="badge red">${r.out}</span>` : '—' },
+        { key: 'low', label: 'Low', num: 1, render: (r) => r.low
+            ? `<span class="badge amber">${r.low}</span>` : '—' },
+      ])}
+      <p class="artotals">${catRows.length} categor(ies) &middot; capital ${fmt(tCapital)}
+        &middot; retail ${fmt(tRetail)} &middot; <b>profit on shelf: ${fmt(tRetail - tCapital)}</b></p>
+
+      ${needsAttention.length ? `<h4 style="margin:14px 0 4px">Needs restocking
+        <small style="font-weight:400;color:var(--ink-2)">— out of stock, or at/below the minimum</small></h4>
+      ${table(needsAttention, [
+        { key: 'name', label: 'Item', render: (r) => itemLabelHtml(r) },
+        { key: 'category', label: 'Category', render: (r) => esc(r.category ?? '') },
+        { key: 'on_hand', label: 'On hand', num: 1, render: (r) => Number(r.onHand).toLocaleString() },
+        { key: 'minimum_stock', label: 'Minimum', num: 1 },
+        { key: 'status', label: 'Status', render: (r) => statusBadge(r.status) },
+      ])}` : ''}
+
+      <h4 style="margin:14px 0 4px">Every product</h4>
+      ${table(stockRows, [
+        { key: 'name', label: 'Item', render: (r) => itemLabelHtml(r) },
+        { key: 'category', label: 'Category', render: (r) => esc(r.category ?? '') },
+        { key: 'on_hand', label: 'On hand', num: 1, render: (r) => Number(r.onHand).toLocaleString() },
+        { key: 'pack_size', label: 'Per box', num: 1, render: (r) => Number(r.pack_size)
+            ? Number(r.pack_size) : '<small style="color:var(--ink-3)">—</small>' },
+        { key: 'cost', label: 'Capital each', num: 1, render: (r) => fmt(r.cost) },
+        { key: 'capital', label: 'Capital held', num: 1, render: (r) => fmt(r.capital) },
+        { key: 'sales_price', label: 'Price each', num: 1, render: (r) => fmt(r.sales_price) },
+        { key: 'retail', label: 'Retail value', num: 1, render: (r) => fmt(r.retail) },
+        { key: 'status', label: 'Status', render: (r) => statusBadge(r.status) },
+      ])}`;
+
+    // ---- where the money is, what came in, what is still owed ----
+    // Each of these had a working page but no report: you could see one payment
+    // or one account, never the month. Summary first, detail only where it earns
+    // its place -- the dedicated pages are still there for the row-by-row.
+    const mTotal = (rows, f) => rows.reduce((a, r) => a + NNUM(f(r)), 0);
+    const thisMonth = new Date().toISOString().slice(0, 7);
+
+    const cash = mTotal(acctBal, (r) => r.current_balance);
+    const moneySection = `
+      <h3>Where the money is</h3>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card green"><span>Across all accounts</span><strong>${fmt(cash)}</strong></div>
+        ${acctBal.filter((a2) => NNUM(a2.current_balance) !== 0).map((a2) =>
+          `<div class="card"><span>${esc(a2.name)}</span>
+            <strong>${fmt(a2.current_balance)}</strong></div>`).join('')}
+      </div>
+      ${table(acctBal, [
+        { key: 'name', label: 'Account', render: (r) => `<b>${esc(r.name)}</b>` },
+        { key: 'beginning_balance', label: 'Opening', num: 1, render: (r) => fmt(r.beginning_balance) },
+        { key: 'total_deposits', label: 'Deposits', num: 1, render: (r) => fmt(r.total_deposits) },
+        { key: 'total_withdrawals', label: 'Withdrawals', num: 1, render: (r) => fmt(r.total_withdrawals) },
+        { key: 'balance_adjustments', label: 'Adjustments', num: 1, render: (r) => fmt(r.balance_adjustments) },
+        { key: 'current_balance', label: 'Balance', num: 1,
+          render: (r) => `<strong>${fmt(r.current_balance)}</strong>` },
+      ])}`;
+
+    // ---- collections: money actually received ----
+    const payMonth = {}, payAcct = {}, payCheque = {};
+    (payments || []).forEach((p) => {
+      const m = String(p.date).slice(0, 7);
+      const amt = NNUM(p.amount);
+      (payMonth[m] ??= { month: m, count: 0, amount: 0 }).count++;
+      payMonth[m].amount += amt;
+      const an = p.account || '(no account tagged)';
+      (payAcct[an] ??= { account: an, count: 0, amount: 0 }).count++;
+      payAcct[an].amount += amt;
+      if (p.cheque_status) {
+        (payCheque[p.cheque_status] ??= { status: p.cheque_status, count: 0, amount: 0 }).count++;
+        payCheque[p.cheque_status].amount += amt;
+      }
+    });
+    const payMonthRows = Object.values(payMonth).sort((a2, b2) => b2.month.localeCompare(a2.month));
+    const payAcctRows = Object.values(payAcct).sort((a2, b2) => b2.amount - a2.amount);
+    const chequeRows = Object.values(payCheque);
+    const collectedAll = mTotal(payments || [], (p) => p.amount);
+    const collectedMonth = mTotal((payments || []).filter((p) =>
+      String(p.date).slice(0, 7) === thisMonth), (p) => p.amount);
+    const uncleared = chequeRows.filter((c) => c.status !== 'Good')
+      .reduce((a2, c) => a2 + c.amount, 0);
+
+    const collectionsSection = `
+      <h3>Collections received</h3>
+      <p class="empty" style="margin:2px 0 10px">Every payment banked against an invoice. A cheque only
+        counts once it has cleared, so a held or bounced one is shown separately and stays collectible.</p>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card green"><span>Collected, all time</span><strong>${fmt(collectedAll)}</strong></div>
+        <div class="card"><span>Collected this month</span><strong>${fmt(collectedMonth)}</strong></div>
+        <div class="card"><span>Payments recorded</span><strong>${(payments || []).length}</strong></div>
+        ${uncleared ? `<div class="card red"><span>Cheques not cleared</span>
+          <strong>${fmt(uncleared)}</strong></div>` : ''}
+      </div>
+      <h4 style="margin:10px 0 4px">By month</h4>
+      ${table(payMonthRows, [
+        { key: 'month', label: 'Month', render: (r) => `<b>${esc(r.month)}</b>` },
+        { key: 'count', label: 'Payments', num: 1 },
+        { key: 'amount', label: 'Collected', num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+      ])}
+      <h4 style="margin:12px 0 4px">By account</h4>
+      ${table(payAcctRows, [
+        { key: 'account', label: 'Paid into', render: (r) => `<b>${esc(r.account)}</b>` },
+        { key: 'count', label: 'Payments', num: 1 },
+        { key: 'amount', label: 'Collected', num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+      ])}
+      ${chequeRows.length ? `<h4 style="margin:12px 0 4px">Cheques</h4>
+      ${table(chequeRows, [
+        { key: 'status', label: 'Status', render: (r) => `<span class="badge ${
+            r.status === 'Good' ? 'green' : r.status === 'Bounced' ? 'red' : 'amber'}">${esc(r.status)}</span>` },
+        { key: 'count', label: 'Cheques', num: 1 },
+        { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+      ])}` : ''}`;
+
+    // ---- receivables: the aging that the Receivables page shows, summarised ----
+    const buckets = { current: 0, b30: 0, b60: 0, b90: 0 };
+    const bcount = { current: 0, b30: 0, b60: 0, b90: 0 };
+    (arOpen || []).forEach((r) => {
+      const d = NNUM(r.days_overdue), bal = NNUM(r.balance);
+      const k = d <= 0 ? 'current' : d <= 30 ? 'b30' : d <= 60 ? 'b60' : 'b90';
+      buckets[k] += bal; bcount[k] += 1;
+    });
+    const owed = buckets.current + buckets.b30 + buckets.b60 + buckets.b90;
+    const advances = mTotal(custAdv || [], (a2) => NNUM(a2.amount) - NNUM(a2.applied));
+    const agingSection = `
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card amber"><span>Owed in total</span><strong>${fmt(owed)}</strong></div>
+        <div class="card green"><span>Current (not yet due)</span>
+          <strong>${fmt(buckets.current)}</strong><small>${bcount.current} invoice(s)</small></div>
+        <div class="card amber"><span>1–30 days over</span>
+          <strong>${fmt(buckets.b30)}</strong><small>${bcount.b30} invoice(s)</small></div>
+        <div class="card amber"><span>31–60 days over</span>
+          <strong>${fmt(buckets.b60)}</strong><small>${bcount.b60} invoice(s)</small></div>
+        <div class="card red"><span>Over 60 days</span>
+          <strong>${fmt(buckets.b90)}</strong><small>${bcount.b90} invoice(s)</small></div>
+        ${advances ? `<div class="card"><span>Advances held (no invoice yet)</span>
+          <strong>${fmt(advances)}</strong></div>` : ''}
+      </div>`;
+
+    // ---- deliveries: what has gone out, what has not ----
+    const delPending = (deliveries || []).filter((d) => d.status !== 'Delivered');
+    const deliveriesSection = `
+      <h3>Deliveries</h3>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card"><span>Delivery receipts issued</span><strong>${(deliveries || []).length}</strong></div>
+        <div class="card green"><span>Delivered</span>
+          <strong>${(deliveries || []).length - delPending.length}</strong></div>
+        <div class="card ${delPending.length ? 'amber' : 'green'}"><span>Still pending</span>
+          <strong>${delPending.length}</strong></div>
+        <div class="card"><span>Value still out</span>
+          <strong>${fmt(mTotal(delPending, (d) => d.total))}</strong></div>
+      </div>
+      ${delPending.length ? table(delPending, [
+        { key: 'dr_no', label: 'DR No.' },
+        { key: 'date', label: 'Date', render: (r) => d10(r.date) },
+        { key: 'customer', label: 'Customer' },
+        { key: 'store_farm', label: 'Stores/Farms', render: (r) => esc(r.store_farm ?? '') },
+        { key: 'delivered_by', label: 'Delivered by', render: (r) => esc(r.delivered_by ?? '') },
+        { key: 'total', label: 'Invoice value', num: 1, render: (r) => fmt(r.total) },
+      ]) : '<p class="empty">Every delivery receipt has been signed for.</p>'}`;
+
+    // ---- purchases: what was bought, and from whom ----
+    const purMonth = {};
+    (purchases || []).filter((p) => !String(p.status).toLowerCase().includes('cancel'))
+      .forEach((p) => {
+        const m = String(p.order_date).slice(0, 7);
+        (purMonth[m] ??= { month: m, lines: 0, qty: 0, cost: 0 }).lines++;
+        purMonth[m].qty += NNUM(p.purchase_qty);
+        purMonth[m].cost += NNUM(p.purchase_qty) * NNUM(p.unit_cost);
+      });
+    const purRows = Object.values(purMonth).sort((a2, b2) => b2.month.localeCompare(a2.month));
+    const purchasesSection = `
+      <h3>Purchases from suppliers</h3>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card"><span>Order lines</span><strong>${(purchases || []).length}</strong></div>
+        <div class="card amber"><span>Spent, all time</span>
+          <strong>${fmt(mTotal(purRows, (r) => r.cost))}</strong></div>
+      </div>
+      <h4 style="margin:10px 0 4px">By month</h4>
+      ${table(purRows, [
+        { key: 'month', label: 'Month', render: (r) => `<b>${esc(r.month)}</b>` },
+        { key: 'lines', label: 'Lines', num: 1 },
+        { key: 'qty', label: 'Units', num: 1, render: (r) => Number(r.qty).toLocaleString() },
+        { key: 'cost', label: 'Cost', num: 1, render: (r) => `<strong>${fmt(r.cost)}</strong>` },
+      ])}
+      <h4 style="margin:12px 0 4px">By supplier</h4>
+      ${table(vendors, [
+        { key: 'name', label: 'Supplier', render: (r) => `<b>${esc(r.name)}</b>` },
+        { key: 'orders', label: 'Order lines', num: 1 },
+        { key: 'total_spent', label: 'Total spent', num: 1,
+          render: (r) => `<strong>${fmt(r.total_spent)}</strong>` },
+        { key: 'avg_shipping_days', label: 'Avg days to arrive', num: 1 },
+      ])}`;
+
+    // ---- stock movement: why the shelf figure is what it is ----
+    // 218 adjustment rows had no report anywhere. They are the difference between
+    // what was bought and what the count found, so they belong in a report more
+    // than most things do.
+    const adjBatch = {};
+    (manualInv || []).forEach((m) => {
+      const b = m.batch_no || '(no batch)';
+      (adjBatch[b] ??= { batch: b, lines: 0, up: 0, down: 0, net: 0, first: null, last: null });
+      const g = adjBatch[b];
+      const qty = NNUM(m.qty);
+      g.lines++; g.net += qty;
+      if (qty >= 0) g.up += qty; else g.down += qty;
+      const d = String(m.date).slice(0, 10);
+      if (!g.first || d < g.first) g.first = d;
+      if (!g.last || d > g.last) g.last = d;
+    });
+    const adjRows = Object.values(adjBatch).sort((a2, b2) => String(b2.last).localeCompare(String(a2.last)));
+    const movementSection = (manualInv || []).length ? `
+      <h3>Stock adjustments</h3>
+      <p class="empty" style="margin:2px 0 10px">Every correction made to stock outside a purchase or a
+        sale — stock takes, write-offs, corrections. This is the gap between what was bought and what
+        was actually found on the shelf.</p>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card"><span>Adjustment lines</span><strong>${(manualInv || []).length}</strong></div>
+        <div class="card green"><span>Units added</span>
+          <strong>${Number(adjRows.reduce((a2, r) => a2 + r.up, 0)).toLocaleString()}</strong></div>
+        <div class="card red"><span>Units taken off</span>
+          <strong>${Number(adjRows.reduce((a2, r) => a2 + r.down, 0)).toLocaleString()}</strong></div>
+        <div class="card ${adjRows.reduce((a2, r) => a2 + r.net, 0) < 0 ? 'amber' : ''}"><span>Net</span>
+          <strong>${Number(adjRows.reduce((a2, r) => a2 + r.net, 0)).toLocaleString()}</strong></div>
+      </div>
+      ${table(adjRows, [
+        { key: 'batch', label: 'Batch', render: (r) => `<b>${esc(r.batch)}</b>` },
+        { key: 'last', label: 'Dated', render: (r) => r.first === r.last ? d10(r.last)
+            : `${d10(r.first)} → ${d10(r.last)}` },
+        { key: 'lines', label: 'Lines', num: 1 },
+        { key: 'up', label: 'Added', num: 1, render: (r) => r.up ? Number(r.up).toLocaleString() : '—' },
+        { key: 'down', label: 'Taken off', num: 1,
+          render: (r) => r.down ? Number(r.down).toLocaleString() : '—' },
+        { key: 'net', label: 'Net', num: 1, render: (r) =>
+            `<strong style="color:${r.net < 0 ? 'var(--bad)' : 'var(--good)'}">${
+              Number(r.net).toLocaleString()}</strong>` },
+      ])}` : '';
+
+    // ---- the customer book ----
+    const custRevenue = {};
+    (allSales || []).filter((x) => !String(x.status).toLowerCase().includes('cancel'))
+      .forEach((x) => {
+        const k = String(x.customer || '').trim().toUpperCase();
+        (custRevenue[k] ??= { customer: x.customer, invoices: 0, revenue: 0, paid: 0 });
+        custRevenue[k].invoices++;
+        custRevenue[k].revenue += NNUM(x.total);
+        custRevenue[k].paid += NNUM(x.amount_paid);
+      });
+    const custRows = Object.values(custRevenue).sort((a2, b2) => b2.revenue - a2.revenue);
+    const tierCount = {};
+    (customersAll || []).forEach((c) => {
+      const t = c.tier === 'cod' ? 'COD dealer' : c.tier === 'outright' ? 'Outright dealer' : 'Retail (SRP)';
+      tierCount[t] = (tierCount[t] || 0) + 1;
+    });
+    const customersSection = `
+      <h3>Customers</h3>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card"><span>On the books</span><strong>${(customersAll || []).length}</strong></div>
+        <div class="card"><span>Have bought</span><strong>${custRows.length}</strong></div>
+        ${Object.entries(tierCount).map(([t, n]) =>
+          `<div class="card"><span>${esc(t)}</span><strong>${n}</strong></div>`).join('')}
+      </div>
+      ${custRows.length ? table(custRows, [
+        { key: 'customer', label: 'Customer', render: (r) => `<b>${esc(r.customer)}</b>` },
+        { key: 'invoices', label: 'Invoices', num: 1 },
+        { key: 'revenue', label: 'Bought', num: 1, render: (r) => `<strong>${fmt(r.revenue)}</strong>` },
+        { key: 'paid', label: 'Paid', num: 1, render: (r) => fmt(r.paid) },
+        { key: 'owing', label: 'Still owing', num: 1, render: (r) => (r.revenue - r.paid) > 0
+            ? `<strong style="color:var(--bad)">${fmt(r.revenue - r.paid)}</strong>` : '—' },
+      ]) : '<p class="empty">No sales recorded yet.</p>'}`;
+
+    // ---- what the system is NOT being told ----
+    // A report that quietly omits a whole side of the books is worse than no
+    // report, so the gaps are named rather than left to be discovered later.
+    const unusedBits = [
+      ['Expenses', (expensesAll || []).length, 'no cost of running the shop is recorded, so profit cannot be computed'],
+      ['Attendance', (attendanceAll || []).length, 'staff time in and out'],
+      ['Payroll runs', (payrollAll || []).length, 'wages, deductions and payslips'],
+      ['Store visits', (visitsAll || []).length, 'field visit reports from the reps'],
+      ['URC claims', (claimsAll || []).length, 'promos, damages and returns owed back by the principal'],
+    ].filter((r) => !r[1]);
+    const gapsSection = unusedBits.length ? `
+      <div class="mktbox" style="margin-top:16px">
+        <div><b>Not being recorded yet</b> — these parts of the system hold no data, so nothing above
+          can report on them:
+          <ul style="margin:6px 0 0 18px;padding:0">
+            ${unusedBits.map(([n, , why]) => `<li><b>${esc(n)}</b> — ${esc(why)}</li>`).join('')}
+          </ul>
+        </div>
+      </div>` : '';
+
+    // ---- the month, end to end ----
+    const anyExpense = monthly.some((m) => NNUM(m.total_expenses) > 0);
+    const monthlySection = monthly.length ? `
+      <h3>Month by month</h3>
+      ${anyExpense ? '' : `<div class="mktbox" style="margin:2px 0 10px">
+        <div><b>No expenses have been recorded</b>, so the last column is revenue, not profit. It counts
+        money invoiced and subtracts nothing — no rent, wages, fuel or freight. Record expenses on the
+        Expenses page and this becomes a real profit figure.</div></div>`}
+      ${table([...monthly].sort((a2, b2) => String(b2.month).localeCompare(String(a2.month))), [
+        { key: 'month', label: 'Month', render: (r) => `<b>${esc(r.month)}</b>` },
+        { key: 'total_income', label: 'Income', num: 1, render: (r) => fmt(r.total_income) },
+        { key: 'total_expenses', label: 'Expenses', num: 1, render: (r) => fmt(r.total_expenses) },
+        { key: 'profit_loss', label: anyExpense ? 'Profit' : 'Revenue (no costs recorded)', num: 1, render: (r) =>
+            `<strong style="color:${NNUM(r.profit_loss) >= 0 ? 'var(--good)' : 'var(--bad)'}">
+              ${fmt(r.profit_loss)}</strong>` },
+      ])}` : '';
+
+    // ---- what actually sold, rolled up the same way the shelf is ----
+    const catOf = Object.fromEntries(stockRows.map((r) => [r.name, r.category || '(uncategorised)']));
+    const costOf = Object.fromEntries(stockRows.map((r) => [r.name, NNUM(r.cost)]));
+    const soldCat = {};
+    (allSales || []).filter((x) => !String(x.status).toLowerCase().includes('cancel'))
+      .forEach((x) => (x.items || []).forEach((it) => {
+        const c = catOf[it.item] || '(uncategorised)';
+        soldCat[c] ??= { cat: c, units: 0, revenue: 0, capital: 0, free: 0 };
+        const g = soldCat[c];
+        const qty = NNUM(it.qty);
+        g.units += qty;
+        g.capital += qty * (costOf[it.item] || 0);
+        if (it.promo) g.free += qty;
+        else g.revenue += qty * (NNUM(it.unit_price) - NNUM(it.discount));
+      }));
+    const soldRows = Object.values(soldCat).sort((a2, b2) => b2.revenue - a2.revenue);
+    const sTotal = soldRows.reduce((a2, r) => a2 + r.revenue, 0);
+    const sCap = soldRows.reduce((a2, r) => a2 + r.capital, 0);
+    const salesByCat = soldRows.length ? `
+      <h3>Sales by category <small style="font-weight:400;color:var(--ink-2)">— all time</small></h3>
+      ${table(soldRows, [
+        { key: 'cat', label: 'Category', render: (r) => `<b>${esc(r.cat)}</b>` },
+        { key: 'units', label: 'Units sold', num: 1, render: (r) => Number(r.units).toLocaleString() },
+        { key: 'free', label: 'Of which free', num: 1, render: (r) => r.free
+            ? `<span class="badge green">${Number(r.free).toLocaleString()}</span>` : '—' },
+        { key: 'revenue', label: 'Revenue', num: 1, render: (r) => `<strong>${fmt(r.revenue)}</strong>` },
+        { key: 'capital', label: 'Capital sold', num: 1, render: (r) => fmt(r.capital) },
+        { key: 'profit', label: 'Gross profit', num: 1, render: (r) => fmt(r.revenue - r.capital) },
+      ])}
+      <p class="artotals">revenue ${fmt(sTotal)} &middot; capital ${fmt(sCap)}
+        &middot; <b>gross profit: ${fmt(sTotal - sCap)}</b></p>` : '';
+
     return `<h2>Reports</h2>
+      <p class="empty" style="margin:4px 0 14px">Everything that gets reported on, in one place:
+        what is left on the shelf, how the day went, who owes what, tax, item movement and
+        commissions. The <b>URC Report</b> page carries the fund-by-fund figures for filing
+        with the principal.</p>
+      ${moneySection}
+      ${collectionsSection}
+      ${stockSection}
+      ${salesByCat}
       ${daily}
-      <h3>Accounts receivable (by customer)</h3>${table(ar, [
+      <h3>Accounts receivable</h3>
+      ${agingSection}
+      <h4 style="margin:10px 0 4px">By customer</h4>${table(ar, [
         { key: 'customer', label: 'Customer' },
         { key: 'open_invoices', label: 'Open invoices', num: 1 },
         { key: 'balance', label: 'Balance', num: 1, render: (r) => fmt(r.balance) },
@@ -2532,12 +2944,18 @@ const views = {
         { key: 'qty_sold', label: 'Qty', num: 1 },
         { key: 'revenue', label: 'Revenue', num: 1, render: (r) => fmt(r.revenue) },
       ])}
+      ${deliveriesSection}
+      ${purchasesSection}
+      ${movementSection}
+      ${customersSection}
+      ${monthlySection}
       <h3>Sales rep commissions</h3>${table(comms, [
         { key: 'name', label: 'Rep' },
         { key: 'commission_rate', label: 'Rate', num: 1, render: (r) => (r.commission_rate * 100).toFixed(2) + '%' },
         { key: 'total_sales', label: 'Total sales', num: 1, render: (r) => fmt(r.total_sales) },
         { key: 'commission', label: 'Commission', num: 1, render: (r) => fmt(r.commission) },
-      ])}`;
+      ])}
+      ${gapsSection}`;
   },
 
   // ================= Settings (+ profit goals CRUD) =================
