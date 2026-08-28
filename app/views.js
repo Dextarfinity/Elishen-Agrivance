@@ -1104,6 +1104,7 @@ const views = {
           { name: 'deal', label: 'Bonus deal (e.g. 10 + 2)' },
           { name: 'outright_rate', label: 'Outright disc. (0.15 = 15%)', type: 'number' },
           { name: 'cod_rate', label: 'COD disc. (0.05 = 5%)', type: 'number' },
+          { name: 'pack_size', label: 'Pieces per box (blank = sold whole only)', type: 'number' },
           { name: 'cod_discount', label: 'COD discount per bag in ₱ (cash sales)', type: 'number' },
           { name: 'term_discount', label: 'Term discount per bag in ₱ (sales on credit)', type: 'number' },
           { name: 'preferred_vendor_id', label: 'Preferred vendor', type: 'select', options: vendors },
@@ -1117,6 +1118,8 @@ const views = {
           { key: 'name', label: 'Item' }, { key: 'category', label: 'Category' },
           { key: 'packaging', label: 'Packaging', render: (r) => esc(r.packaging ?? '') },
           { key: 'uom', label: 'UoM', render: (r) => esc(r.uom ?? '') },
+          { key: 'pack_size', label: 'Per box', num: 1, render: (r) => Number(r.pack_size)
+              ? `${Number(r.pack_size)}` : '<small style="color:var(--ink-3)">—</small>' },
           { key: '_oh', label: 'On hand', num: 1, render: (r) => Number(stockBy[r.id]?.on_hand ?? 0) },
           { key: 'minimum_stock', label: 'Min', num: 1 },
           { key: 'cost', label: 'Capital', num: 1, render: (r) => fmt(r.cost) },

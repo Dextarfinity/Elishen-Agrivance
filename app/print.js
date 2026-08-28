@@ -28,7 +28,10 @@ function buildPrintHTML(title, rootEl) {
   // paginated tables print in FULL — reports must carry every row, not one page
   clone.querySelectorAll('[data-tbl]').forEach((w) => {
     const c = window._tblCache && window._tblCache[w.dataset.tbl];
-    if (c) w.innerHTML = window.fullTableHTML(c.rows, c.cols);
+    // one unprintable section must not take the whole report down with it
+    try {
+      if (c && typeof window.fullTableHTML === 'function') w.innerHTML = window.fullTableHTML(c.rows, c.cols);
+    } catch (e) { /* leave the on-screen page of that table as it stands */ }
   });
   // inputs/selects become their plain values (so filters & draft entries print readably)
   clone.querySelectorAll('input, select, textarea').forEach((el) => {
@@ -184,9 +187,17 @@ function editedHTML(doc, fallback) {
 // window with a choice bar — nothing prints until the user picks an action.
 // On the phone app (or when pop-ups are blocked) it opens as an IN-APP overlay
 // with a Back button, so the user is never stranded on the preview.
+// The desktop build must not open a second window: Electron gives it its own
+// BrowserWindow, and when that closes the main window is left without focus --
+// clicks and typing go nowhere until the user alt-tabs or minimises and reopens.
+// The in-app overlay avoids the problem entirely and prints just the same.
+const isDesktopApp = () =>
+  /electron/i.test((typeof navigator !== 'undefined' && navigator.userAgent) || '');
 function openPrintPreview(html, pdfName) {
   const native = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
-  const w = native ? null : window.open('', '_blank', 'width=980,height=760');
+  const inApp = native || isDesktopApp();
+  let w = null;
+  if (!inApp) { try { w = window.open('', '_blank', 'width=980,height=760'); } catch (e) { w = null; } }
   if (!w) return openPreviewOverlay(html, pdfName, native);
   w.document.write(html);
   w.document.close();
@@ -248,7 +259,20 @@ function openPreviewOverlay(html, pdfName, native) {
   // the srcdoc document only exists once it has loaded — make it editable then
   frame.onload = () => { try { makeEditable(frame.contentDocument); } catch (e) {} };
   frame.srcdoc = html;
-  document.getElementById('pvOvBack').onclick = () => ov.remove();
+  // Closing the preview hands the keyboard back to the page. The iframe holds
+  // focus while it is open, and on some builds it keeps it after removal, which
+  // leaves the app looking frozen -- the same symptom a second window caused.
+  const closePreview = () => {
+    ov.remove();
+    try {
+      document.activeElement?.blur?.();
+      window.focus();
+      document.getElementById('main')?.focus?.({ preventScroll: true });
+    } catch (e) { /* focus is best-effort */ }
+  };
+  document.getElementById('pvOvBack').onclick = closePreview;
+  // Esc closes it too, so there is always a way out without reaching for a button
+  ov.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePreview(); });
   document.getElementById('pvOvPdf').onclick = async (e) => {
     const b = e.target;
     b.disabled = true; b.textContent = 'Generating…';

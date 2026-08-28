@@ -462,7 +462,8 @@ async function show(view) {
     wire(view);
     wireCrud();
     wireSalesActions();
-    if (typeof window.injectPrintButton === 'function') window.injectPrintButton();
+    // decoration only: a failure here must never take down the page it adorns
+    try { window.injectPrintButton?.(); } catch (e) { console.warn('print button:', e); }
     if (dot) {
       dot.textContent = `Live · synced ${new Date().toLocaleTimeString()}`;
       dot.classList.remove('stale');
@@ -2908,7 +2909,8 @@ async function softRefresh() {
       const sx = window.scrollX, sy = window.scrollY;
       main.innerHTML = html;
       wire(view);
-      if (typeof window.injectPrintButton === 'function') window.injectPrintButton();
+      // decoration only: a failure here must never take down the page it adorns
+    try { window.injectPrintButton?.(); } catch (e) { console.warn('print button:', e); }
       window.scrollTo(sx, sy);
       touched = true;
     } else {

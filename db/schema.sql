@@ -69,7 +69,13 @@ CREATE TABLE IF NOT EXISTS items (                       -- Inventory tab
     -- its competitor-matched P1,430 and carries neither. Both land in the sale
     -- line's `discount` column, which is likewise pesos per unit.
     cod_discount       numeric(12,2) NOT NULL DEFAULT 0,
-    term_discount      numeric(12,2) NOT NULL DEFAULT 0
+    term_discount      numeric(12,2) NOT NULL DEFAULT 0,
+    -- How many sellable pieces are in a full box. RobiChem is bought by the box
+    -- but sold by the piece: a customer wants six bottles out of a twelve, not
+    -- the box. Stock and sales_price are therefore per PIECE, and this records
+    -- the box so staff can still order and receive in boxes. NULL = sold only
+    -- as the whole unit it is priced in.
+    pack_size          numeric(12,3)
 );
 -- profit  = sales_price - cost          (Inventory!L)
 -- margin  = (sales_price - cost)/cost   (Inventory!M)  → computed in views

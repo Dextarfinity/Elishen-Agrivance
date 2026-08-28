@@ -237,6 +237,16 @@ async function bootstrapFeedDiscounts() {
 }
 bootstrapFeedDiscounts().catch((e) => console.error('Feed-discount bootstrap failed:', e));
 
+// ---------- pack size: how many sellable pieces are in a full box ----------
+// RobiChem is bought by the box but sold by the piece -- a customer wants six
+// bottles out of a twelve, not the box. Stock and price are per piece; pack_size
+// records the box so staff can still order and receive in boxes.
+async function bootstrapPackSize() {
+  await pool.query(
+    'ALTER TABLE items ADD COLUMN IF NOT EXISTS pack_size numeric(12,3)');
+}
+bootstrapPackSize().catch((e) => console.error('Pack-size bootstrap failed:', e));
+
 // ---------- sales billed by URC marketing ----------
 // Goods URC's marketing arm pays for: the stock leaves the shelf and must be
 // deducted, but the money is never Elishen's, so the invoice has to stay out of
@@ -521,7 +531,7 @@ const TABLES = {
   items:                 ['name', 'alias', 'sku', 'category', 'type', 'initial_stock', 'minimum_stock',
                           'sales_price', 'cost', 'preferred_vendor_id', 'units_in_purchase',
                           'promotion', 'notes', 'deal', 'outright_rate', 'cod_rate',
-                          'cod_discount', 'term_discount', 'packaging', 'uom', 'price_breakdown'],
+                          'cod_discount', 'term_discount', 'pack_size', 'packaging', 'uom', 'price_breakdown'],
   bom_lines:             ['finished_item_id', 'component_item_id', 'quantity'],
   purchases:             ['order_date', 'received_date', 'ref_id', 'item_id', 'purchase_qty',
                           'received_qty', 'unit_cost', 'account_id', 'status', 'vendor_id', 'notes',
@@ -615,7 +625,7 @@ for (const [table, cols] of Object.entries(TABLES)) {
 // (registered BEFORE the generic loop so this route wins)
 app.get('/api/reports/item_stock', wrap(async (req, res) => {
   const { rows } = await q(
-    `SELECT v.*, i.alias, i.cod_discount, i.term_discount
+    `SELECT v.*, i.alias, i.cod_discount, i.term_discount, i.pack_size
        FROM v_item_stock v JOIN items i ON i.id = v.id`);
   res.json(rows);
 }));
