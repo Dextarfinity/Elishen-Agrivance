@@ -3,7 +3,7 @@ const main = document.getElementById('main');
 window._view = 'dashboard';
 
 // ---- role-based access: Purchases → Settings are admin-only ----5 211111222222223
-const ADMIN_VIEWS = ['matrix', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
+const ADMIN_VIEWS = ['matrix', 'urcreport', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
   'monitoring', 'reports', 'settings'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
 const OWNER_VIEWS = ['accounts', 'team', 'expenses'];
@@ -1489,6 +1489,25 @@ function wire(view) {
         alert('Error: ' + err.message);
       }
     };
+  }
+
+  if (view === 'urcreport') {
+    const setRange = (from, to) => { window._urcRange = { from, to }; show('urcreport'); };
+    const apply = document.getElementById('urcApply');
+    if (apply) apply.onclick = () => setRange(
+      document.getElementById('urcFrom').value, document.getElementById('urcTo').value);
+    const iso = (d) => d.toISOString().slice(0, 10);
+    document.querySelectorAll('[data-urcpreset]').forEach((b) => b.onclick = () => {
+      const n = new Date();
+      if (b.dataset.urcpreset === 'this') {
+        setRange(iso(new Date(n.getFullYear(), n.getMonth(), 1)), iso(n));
+      } else if (b.dataset.urcpreset === 'last') {
+        setRange(iso(new Date(n.getFullYear(), n.getMonth() - 1, 1)),
+                 iso(new Date(n.getFullYear(), n.getMonth(), 0)));
+      } else {
+        setRange(iso(new Date(n.getFullYear(), 0, 1)), iso(n));
+      }
+    });
   }
 
   if (view === 'matrix') {

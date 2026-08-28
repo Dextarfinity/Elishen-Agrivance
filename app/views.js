@@ -2051,6 +2051,140 @@ const views = {
       ${claimsHtml}`)}`;
   },
 
+  // ================= URC Report (admin) =================
+  // The Matrix Report shows the whole price flow, product by product, which is
+  // the right tool for checking a price but the wrong one for filing with the
+  // principal. This is the filing view: pick a period, read what each fund came
+  // to across everything sold, print it. Same figures, one page, no digging.
+  async urcreport() {
+    const [items, sales] = await Promise.all([
+      api.get('/api/items'), api.get('/api/sales')]);
+    const N = (v) => (v == null || isNaN(Number(v))) ? null : Number(v);
+
+    // default to the month in progress, so the page is useful before it is touched
+    const today = new Date();
+    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1)
+      .toISOString().slice(0, 10);
+    const range = window._urcRange || { from: monthStart, to: today.toISOString().slice(0, 10) };
+    window._urcRange = range;
+
+    // Two groups, because they answer different questions. What URC already took
+    // off the invoice, and what the published price is carrying on their behalf.
+    const TAKEN = [['distributor', 'Distributor discount'], ['od', 'OD'],
+                   ['pickup', 'Pick-up'], ['bdf', 'BDF (business development)'],
+                   ['manpower', 'Manpower'], ['special', 'Special']];
+    const CARRIED = [['fth', 'Freight & handling'], ['dist_to_dealer', 'Distributor to dealer'],
+                     ['sales_fund', 'Sales support'], ['manpower_fund', 'Manpower fund'],
+                     ['bus_devt', 'Business development'], ['ktech', 'Ktech / SR incentives'],
+                     ['tactical_fund', 'Tactical fund'],
+                     ['dealer_discount', 'Dealer discount'], ['cash_discount', 'Cash (COD) discount'],
+                     ['distributor_income', 'Distributor income']];
+
+    const byName = Object.fromEntries(items.map((i) => [i.name, i]));
+    const inRange = (sales || []).filter((s) =>
+      !String(s.status).toLowerCase().includes('cancel')
+      && (!range.from || String(s.date).slice(0, 10) >= range.from)
+      && (!range.to || String(s.date).slice(0, 10) <= range.to));
+
+    // sacks sold per product, promo free goods excluded: they cost URC nothing
+    // per sack and are claimed separately as free-goods claims
+    const soldQty = {};
+    let promoQty = 0;
+    inRange.forEach((s) => (s.items || []).forEach((it) => {
+      if (it.promo) { promoQty += Number(it.qty) || 0; return; }
+      soldQty[it.item] = (soldQty[it.item] || 0) + (Number(it.qty) || 0);
+    }));
+
+    const tally = (keys, pick) => keys.map(([k, lab]) => {
+      let amount = 0, qty = 0, products = 0;
+      for (const [name, q] of Object.entries(soldQty)) {
+        const rate = N(pick(byName[name], k));
+        if (rate == null || !q) continue;
+        amount += rate * q; qty += q; products += 1;
+      }
+      return { k, lab, amount, qty, products, rate: qty ? amount / qty : null };
+    }).filter((r) => r.amount > 0);
+
+    const takenRows = tally(TAKEN, (i, k) => i?.price_breakdown?.discounts?.[k]);
+    const carriedRows = tally(CARRIED, (i, k) => i?.price_breakdown?.dealer_build?.[k]);
+    const sacks = Object.values(soldQty).reduce((a, q) => a + q, 0);
+    const takenTotal = takenRows.reduce((a, r) => a + r.amount, 0);
+    const carriedTotal = carriedRows.reduce((a, r) => a + r.amount, 0);
+    const covered = Object.keys(soldQty).filter((n) => byName[n]?.price_breakdown?.dealer_build).length;
+    const uncovered = Object.entries(soldQty)
+      .filter(([n]) => !byName[n]?.price_breakdown?.dealer_build)
+      .map(([n, q]) => ({ n, q })).sort((a, b) => b.q - a.q);
+
+    const fundTable = (rows, total) => rows.length ? table(rows, [
+      { key: 'lab', label: 'Fund / cost', render: (r) => `<b>${esc(r.lab)}</b>` },
+      { key: 'rate', label: 'Rate per sack', num: 1, render: (r) => fmt(r.rate) },
+      { key: 'qty', label: 'Sacks', num: 1, render: (r) => Number(r.qty).toLocaleString() },
+      { key: 'products', label: 'Products', num: 1 },
+      { key: 'amount', label: 'Amount', num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+    ]) + `<p class="artotals"><b>Total: ${fmt(total)}</b></p>`
+      : '<p class="empty">Nothing in this period carries these figures.</p>';
+
+    // the per-product working, so any line above can be justified on the spot
+    const detailRows = Object.entries(soldQty)
+      .map(([name, q]) => ({ name, q, i: byName[name] }))
+      .filter((r) => r.i?.price_breakdown?.dealer_build)
+      .sort((a, b) => b.q - a.q);
+    const detailCols = [
+      { key: 'name', label: 'Product' },
+      { key: 'q', label: 'Sacks', num: 1, render: (r) => Number(r.q).toLocaleString() },
+      ...takenRows.map((f) => ({ key: 't_' + f.k, label: f.lab, num: 1,
+        render: (r) => fmt((N(r.i.price_breakdown.discounts?.[f.k]) || 0) * r.q) })),
+      ...carriedRows.map((f) => ({ key: 'c_' + f.k, label: f.lab, num: 1,
+        render: (r) => fmt((N(r.i.price_breakdown.dealer_build?.[f.k]) || 0) * r.q) })),
+    ];
+
+    return `<h2>URC Report</h2>
+      <p class="empty" style="margin:4px 0 12px">What each URC fund came to over a period, ready to file.
+        Pick the dates, read the totals, print. <b>Deducted at purchase</b> is what URC already took off
+        the invoice; <b>carried in the published price</b> is what the selling price funds on their
+        behalf. Promo free goods are excluded here and claimed separately.</p>
+
+      <div class="form" style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label>From <input type="date" id="urcFrom" value="${esc(range.from)}"></label>
+        <label>To <input type="date" id="urcTo" value="${esc(range.to)}"></label>
+        <button type="button" class="mini add" id="urcApply">Apply</button>
+        <button type="button" class="mini" data-urcpreset="this">This month</button>
+        <button type="button" class="mini" data-urcpreset="last">Last month</button>
+        <button type="button" class="mini" data-urcpreset="year">This year</button>
+      </div>
+
+      <div class="cards" style="margin-bottom:16px">
+        <div class="card"><span>Sacks sold in period</span>
+          <strong>${Number(sacks).toLocaleString()}</strong></div>
+        <div class="card amber"><span>Deducted at purchase</span><strong>${fmt(takenTotal)}</strong></div>
+        <div class="card green"><span>Carried in the published price</span>
+          <strong>${fmt(carriedTotal)}</strong></div>
+        <div class="card"><span>Products priced on the matrix</span>
+          <strong>${covered}</strong></div>
+      </div>
+
+      <h3 style="margin:14px 0 6px">Deducted at purchase</h3>
+      ${fundTable(takenRows, takenTotal)}
+
+      <h3 style="margin:18px 0 6px">Carried in the published price</h3>
+      ${fundTable(carriedRows, carriedTotal)}
+
+      ${promoQty ? `<p class="tblmatch" style="margin-top:10px">
+        ${Number(promoQty).toLocaleString()} promo free unit(s) sold in this period are excluded above —
+        file those as a free-goods claim on the Matrix Report.</p>` : ''}
+
+      ${uncovered.length ? `<div class="mktbox" style="margin-top:14px">
+        <div><b>${uncovered.length} product(s) sold in this period have no matrix pricing</b>, so they
+        contribute nothing to the figures above: ${uncovered.slice(0, 6)
+          .map((u) => `${esc(u.n)} (${Number(u.q).toLocaleString()})`).join(', ')}${
+          uncovered.length > 6 ? `, and ${uncovered.length - 6} more` : ''}.
+        Set their price build-up in Inventory → Pricing if they should be claimed.</div>
+      </div>` : ''}
+
+      ${detailRows.length ? `<h3 style="margin:18px 0 6px">Per product</h3>
+        ${table(detailRows, detailCols)}` : ''}`;
+  },
+
   async invdash() {
     const now = new Date();
     const st = window._invdash || (window._invdash = {
