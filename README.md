@@ -169,3 +169,38 @@ Staff may create and update sheets; deleting one is admin-only.
 
 `.gitignore` excludes secrets (`backend/.env`), `node_modules`, build outputs,
 database backups, and the generated Android web assets. Safe to `git init` and push.
+
+
+levomax 36x5 - 16
+
+spectrum 96x5 - 17
+
+iron dextran 12x100ml - 6 + 1(opened 8 left)
+
+robicomject 12x100ml - 7 + 1(opened 11 left)
+
+spectrum plus 96x5g - 18
+
+cotrimazine tripulac 24x 100ml - 6 + 1(opened 4 left)
+
+wormbuster 36pcs x 5g - 19box
+
+top b+ 36x60ml - 17box+1box(opened 31 left)
+
+wheat germ 12x300g - 6box + 1box (opened  9 left)
+
+coccibuster - 36pcsx5 - 16 box
+
+robi la 12x100ml - 8box
+
+robipenstrep 48x1dose - 1box
+
+robipenstrep 96x5g - 14box
+
+top b+ 18x120ml - 20box
+
+shampooch 12botx300ml - 8box
+
+shampooch 16boxes x (15mlx25sachets) - 7box + 1box (opened 14 left)
+
+robi la 12x100ml - 8box + 1box (opened 5 left)
