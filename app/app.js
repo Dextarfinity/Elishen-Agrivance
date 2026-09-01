@@ -1491,6 +1491,32 @@ function wire(view) {
     };
   }
 
+  if (view === 'reports') {
+    // the fund claim generator: fund + period, then regenerate
+    const go = (patch) => {
+      Object.assign(window._fundRange, patch.range || {});
+      if (patch.key) window._fundKey = patch.key;
+      show('reports');
+    };
+    const fk = document.getElementById('fundKey');
+    if (fk) fk.onchange = () => go({ key: fk.value });
+    const fa = document.getElementById('fundApply');
+    if (fa) fa.onclick = () => go({ range: {
+      from: document.getElementById('fundFrom').value,
+      to: document.getElementById('fundTo').value } });
+    const isoD = (d) => d.toISOString().slice(0, 10);
+    document.querySelectorAll('[data-fundpreset]').forEach((b) => b.onclick = () => {
+      const n = new Date();
+      if (b.dataset.fundpreset === 'may') {
+        go({ range: { from: `${n.getFullYear()}-05-01`, to: isoD(n) } });
+      } else if (b.dataset.fundpreset === 'year') {
+        go({ range: { from: `${n.getFullYear()}-01-01`, to: isoD(n) } });
+      } else {
+        go({ range: { from: '2000-01-01', to: isoD(n) } });
+      }
+    });
+  }
+
   if (view === 'urcreport') {
     const setRange = (from, to) => { window._urcRange = { from, to }; show('urcreport'); };
     const apply = document.getElementById('urcApply');
@@ -2303,7 +2329,9 @@ function openPricingEditor(id) {
   // Inventory Dashboard's merged records (full breakdowns) when editing there
   const pool = window._view === 'invdash'
     ? (window._invItems || [])
-    : ((window._crudRows && window._crudRows.items) || window._invItems || []);
+    : window._view === 'matrix'
+      ? (window._matrixItems || [])
+      : ((window._crudRows && window._crudRows.items) || window._invItems || []);
   const item = pool.find((r) => r.id === id);
   if (!item) return;
   const b = item.price_breakdown || {};
@@ -2420,7 +2448,16 @@ function openPricingEditor(id) {
     }
   } else {
     const d = b.discounts || {};
+    const bd = b.dealer_build || {};
     const isPets = model === 'pets';
+    // the same build-up components the Matrix Report prints, in its column order
+    const BUILD_FIELDS = [
+      ['distributor_income', 'Distributor income'], ['fth', 'Freight & handling'],
+      ['dist_to_dealer', 'Dist. to dealer'], ['sales_fund', 'Sales support'],
+      ['manpower_fund', 'Manpower fund'], ['bus_devt', 'Business devt'],
+      ['tactical_fund', 'Tactical fund'], ['dealer_discount', 'Dealer discount'],
+      ['cash_discount', 'Cash (COD)'], ['ktech', 'Ktech / SR incentives'],
+    ];
     body.innerHTML = `<div class="form">
       <div class="grid3">
         ${F('pEx', 'Ex-Plant Price', b.ex_plant)}
@@ -2433,6 +2470,13 @@ function openPricingEditor(id) {
         ${isPets ? `<label>+12% VAT added back <input type="checkbox" id="pVat" checked></label>` : ''}
       </div>
       <div class="totals" id="pPreview"></div>
+      <h4 style="margin:14px 0 4px">Price build-up
+        <small style="font-weight:400;color:var(--ink-2)">— what the published price carries
+        on URC's behalf, per sack</small></h4>
+      <div class="grid3">
+        ${BUILD_FIELDS.map(([k, lab]) => F('pb_' + k, lab, bd[k])).join('')}
+      </div>
+      <div class="totals" id="pBuildPreview"></div>
       <button type="button" class="primary" id="pSave">Save pricing</button>
     </div>`;
     const calc = () => {
@@ -2448,7 +2492,16 @@ function openPricingEditor(id) {
       pPreview.innerHTML = `Price before PBD: <b>${before.toFixed(2)}</b> · PBD: <b>${pbdAmt.toFixed(2)}</b> ·
         Capital: <b>${capital.toFixed(2)}</b>${srp ? ` · SRP: <b>${srp.toFixed(2)}</b> ·
         Profit/bag: <b>${(srp - capital).toFixed(2)}</b>` : ' · <i>set SRP on the item form</i>'}`;
-      return { capital };
+      // the build-up half: what the components add up to, and where that lands
+      const build = BUILD_FIELDS.reduce((a5, [k]) =>
+        a5 + (Number(document.getElementById('pb_' + k).value) || 0), 0);
+      const landed = capital + build;
+      document.getElementById('pBuildPreview').innerHTML =
+        `Build-up total: <b>${build.toFixed(2)}</b> · Capital + build-up: <b>${landed.toFixed(2)}</b>`
+        + (srp ? ` · Published price: <b>${srp.toFixed(2)}</b> · Difference: <b style="color:${
+            Math.abs(srp - landed) < 0.01 ? 'var(--good)' : 'var(--warn)'
+          }">${(srp - landed).toFixed(2)}</b>` : '');
+      return { capital, build };
     };
     body.querySelectorAll('input').forEach((i) => i.oninput = calc);
     calc();
@@ -2459,11 +2512,19 @@ function openPricingEditor(id) {
             manpower: Number(pMan.value), special: Number(pSpec.value) }
         : { distributor: Number(pDist.value), pickup: Number(pPick.value),
             bdf: Number(pBdf.value), manpower: Number(pMan.value) };
+      // keep any build-up key the form does not show (e.g. net_dealer_price)
+      const dealer_build = { ...bd };
+      BUILD_FIELDS.forEach(([k]) => {
+        const v = document.getElementById('pb_' + k).value;
+        if (String(v).trim() === '') delete dealer_build[k];
+        else dealer_build[k] = Number(v);
+      });
       try {
         await api.put(`/api/items/${id}`, {
           cost: Math.round(capital * 10000) / 10000,
           price_breakdown: { ...b, ex_plant: Number(pEx.value), discounts,
-            pbd_rate: Number(pPbd.value), vat: isPets && pVat.checked ? 'add_12' : 'none' },
+            pbd_rate: Number(pPbd.value), vat: isPets && pVat.checked ? 'add_12' : 'none',
+            dealer_build },
         });
         modal.classList.add('hidden');
         show(window._view);

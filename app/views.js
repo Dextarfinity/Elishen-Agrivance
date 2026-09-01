@@ -1641,6 +1641,9 @@ const views = {
   async matrix() {
     const [items, sales, claims] = await Promise.all([
       api.get('/api/items'), api.get('/api/sales'), api.get('/api/claims')]);
+    // the pricing editor is opened straight from a matrix row, so it needs the
+    // full item records this page already has
+    window._matrixItems = items;
     const feeds = items.filter((i) => i.price_breakdown && i.price_breakdown.dealer_build
       && i.category !== 'Robichem');
     const ORDER = ['Supreme Hogs', 'Premium Hogs', 'Stargain Hogs', 'Gamefowl', 'Pet Food', 'Pet Treats', 'Pet Supplies'];
@@ -1725,6 +1728,7 @@ const views = {
               <th rowspan="2">NET</th>
               <th rowspan="2">Publish<br>price/bag</th>
               <th rowspan="2">Income /<br>sack</th>
+              <th rowspan="2"></th>
             </tr>
             <tr>
               ${discCols.map(([, lab]) => `<th>${lab}</th>`).join('')}<th>PBD 5%</th>
@@ -1746,6 +1750,8 @@ const views = {
                 <td class="num">${F(N(b.dealer_build?.net_dealer_price))}</td>
                 <td class="num"><b>${F(N(i.sales_price))}</b></td>
                 <td class="num"><b>${F(incomeOf(i))}</b></td>
+                <td><button type="button" class="mini" data-pricing="${i.id}"
+                  title="Edit this row — ex-plant, every discount, and the whole build-up">Edit</button></td>
               </tr>`;
             }).join('')}
             <tr style="font-weight:700;border-top:2px solid var(--border)">
@@ -1759,6 +1765,7 @@ const views = {
               <td class="num">${F(sum((i) => N(i.price_breakdown.dealer_build?.net_dealer_price)))}</td>
               <td class="num">${F(sum((i) => N(i.sales_price)))}</td>
               <td class="num">${F(sum(incomeOf))}</td>
+              <td></td>
             </tr>
           </tbody>
         </table></div>`);
@@ -2057,8 +2064,8 @@ const views = {
   // principal. This is the filing view: pick a period, read what each fund came
   // to across everything sold, print it. Same figures, one page, no digging.
   async urcreport() {
-    const [items, sales] = await Promise.all([
-      api.get('/api/items'), api.get('/api/sales')]);
+    const [items, sales, purchases] = await Promise.all([
+      api.get('/api/items'), api.get('/api/sales'), api.get('/api/purchases')]);
     const N = (v) => (v == null || isNaN(Number(v))) ? null : Number(v);
 
     // default to the month in progress, so the page is useful before it is touched
@@ -2086,6 +2093,20 @@ const views = {
       && (!range.from || String(s.date).slice(0, 10) >= range.from)
       && (!range.to || String(s.date).slice(0, 10) <= range.to));
 
+    // Sacks BOUGHT per product. The purchase-side funds are deducted on the
+    // sales order, so they follow what was ordered from URC, not what has since
+    // been sold off the shelf -- counting sales would report the wrong month and
+    // miss anything bought but still in stock.
+    const boughtQty = {};
+    (purchases || []).filter((pu) => !String(pu.status).toLowerCase().includes('cancel')
+        && (!range.from || String(pu.order_date).slice(0, 10) >= range.from)
+        && (!range.to || String(pu.order_date).slice(0, 10) <= range.to))
+      .forEach((pu) => {
+        const it = items.find((i) => i.id === pu.item_id);
+        if (!it) return;
+        boughtQty[it.name] = (boughtQty[it.name] || 0) + (Number(pu.purchase_qty) || 0);
+      });
+
     // sacks sold per product, promo free goods excluded: they cost URC nothing
     // per sack and are claimed separately as free-goods claims
     const soldQty = {};
@@ -2095,9 +2116,9 @@ const views = {
       soldQty[it.item] = (soldQty[it.item] || 0) + (Number(it.qty) || 0);
     }));
 
-    const tally = (keys, pick) => keys.map(([k, lab]) => {
+    const tally = (keys, pick, source) => keys.map(([k, lab]) => {
       let amount = 0, qty = 0, products = 0;
-      for (const [name, q] of Object.entries(soldQty)) {
+      for (const [name, q] of Object.entries(source)) {
         const rate = N(pick(byName[name], k));
         if (rate == null || !q) continue;
         amount += rate * q; qty += q; products += 1;
@@ -2105,8 +2126,9 @@ const views = {
       return { k, lab, amount, qty, products, rate: qty ? amount / qty : null };
     }).filter((r) => r.amount > 0);
 
-    const takenRows = tally(TAKEN, (i, k) => i?.price_breakdown?.discounts?.[k]);
-    const carriedRows = tally(CARRIED, (i, k) => i?.price_breakdown?.dealer_build?.[k]);
+    const takenRows = tally(TAKEN, (i, k) => i?.price_breakdown?.discounts?.[k], boughtQty);
+    const carriedRows = tally(CARRIED, (i, k) => i?.price_breakdown?.dealer_build?.[k], soldQty);
+    const bought = Object.values(boughtQty).reduce((a2, q) => a2 + q, 0);
     const sacks = Object.values(soldQty).reduce((a, q) => a + q, 0);
     const takenTotal = takenRows.reduce((a, r) => a + r.amount, 0);
     const carriedTotal = carriedRows.reduce((a, r) => a + r.amount, 0);
@@ -2154,6 +2176,8 @@ const views = {
       </div>
 
       <div class="cards" style="margin-bottom:16px">
+        <div class="card"><span>Sacks bought in period</span>
+          <strong>${Number(bought).toLocaleString()}</strong></div>
         <div class="card"><span>Sacks sold in period</span>
           <strong>${Number(sacks).toLocaleString()}</strong></div>
         <div class="card amber"><span>Deducted at purchase</span><strong>${fmt(takenTotal)}</strong></div>
@@ -2163,10 +2187,12 @@ const views = {
           <strong>${covered}</strong></div>
       </div>
 
-      <h3 style="margin:14px 0 6px">Deducted at purchase</h3>
+      <h3 style="margin:14px 0 6px">Deducted at purchase
+        <small style="font-weight:400;color:var(--ink-2)">— on what was ordered</small></h3>
       ${fundTable(takenRows, takenTotal)}
 
-      <h3 style="margin:18px 0 6px">Carried in the published price</h3>
+      <h3 style="margin:18px 0 6px">Carried in the published price
+        <small style="font-weight:400;color:var(--ink-2)">— on what was sold</small></h3>
       ${fundTable(carriedRows, carriedTotal)}
 
       ${promoQty ? `<p class="tblmatch" style="margin-top:10px">
@@ -2437,7 +2463,8 @@ const views = {
   async reports() {
     const [ar, tax, comms, itemSales, allSales, reps, stock,
            payments, deliveries, purchases, acctBal, vendors, monthly, arOpen, custAdv,
-           manualInv, customersAll, expensesAll, attendanceAll, payrollAll, visitsAll, claimsAll] =
+           manualInv, customersAll, expensesAll, attendanceAll, payrollAll, visitsAll, claimsAll,
+           itemsFull] =
       await Promise.all([
         api.get('/api/reports/ar_by_customer'), api.get('/api/reports/sales_tax'),
         api.get('/api/reports/rep_commissions'), api.get('/api/reports/monthly_item_sales'),
@@ -2448,6 +2475,7 @@ const views = {
         api.get('/api/customer_advances'), api.get('/api/manual_inventory'),
         api.get('/api/customers'), api.get('/api/expenses'), api.get('/api/attendance'),
         api.get('/api/payroll_runs'), api.get('/api/store_visits'), api.get('/api/claims'),
+        api.get('/api/items'),
       ]);
     window._salesForExport = allSales;
     // ---- daily sales summary: "how did today go" ----
@@ -2744,6 +2772,112 @@ const views = {
         { key: 'avg_shipping_days', label: 'Avg days to arrive', num: 1 },
       ])}`;
 
+    // ---- fund claim generator: what URC took off the orders ----
+    // BDF and its siblings are deducted when stock is BOUGHT, not when it is
+    // sold, so this counts purchase quantities. Rates come from each product's
+    // price build-up, which matches the "URC net Capital" workbook: hog and
+    // gamefowl 50kg P10 and 25kg P5, Topbreed 20kg P4 and 5kg P1, RobiChem none.
+    const FUNDS = [['bdf', 'BDF — business development'], ['distributor', 'Distributor discount'],
+                   ['od', 'OD'], ['pickup', 'Pick-up'], ['manpower', 'Manpower'],
+                   ['special', 'Special']];
+    const fundKey = window._fundKey || 'bdf';
+    const fundLabel = (FUNDS.find(([k]) => k === fundKey) || FUNDS[0])[1];
+    const yr = new Date().getFullYear();
+    const fRange = window._fundRange
+      || { from: `${yr}-05-01`, to: new Date().toISOString().slice(0, 10) };
+    window._fundRange = fRange; window._fundKey = fundKey;
+
+    const itemById = Object.fromEntries((itemsFull || []).map((i) => [i.id, i]));
+    const rateOf = (it) => {
+      const v = it?.price_breakdown?.discounts?.[fundKey];
+      return (v == null || isNaN(Number(v))) ? null : Number(v);
+    };
+    const inFundRange = (purchases || []).filter((pu) =>
+      !String(pu.status).toLowerCase().includes('cancel')
+      && String(pu.order_date).slice(0, 10) >= fRange.from
+      && String(pu.order_date).slice(0, 10) <= fRange.to);
+
+    const fMonth = {}, fCat = {}, fProd = {};
+    let fUnpriced = { units: 0, products: new Set() };
+    inFundRange.forEach((pu) => {
+      const it = itemById[pu.item_id];
+      const qty = NNUM(pu.purchase_qty);
+      const rate = rateOf(it);
+      if (rate == null) {
+        if (it) { fUnpriced.units += qty; fUnpriced.products.add(it.name); }
+        return;
+      }
+      const amt = qty * rate;
+      const mo = String(pu.order_date).slice(0, 7);
+      (fMonth[mo] ??= { mo, units: 0, amount: 0, orders: new Set() });
+      fMonth[mo].units += qty; fMonth[mo].amount += amt; fMonth[mo].orders.add(pu.ref_id);
+      const cat = it.category || '(uncategorised)';
+      (fCat[cat] ??= { cat, units: 0, amount: 0 });
+      fCat[cat].units += qty; fCat[cat].amount += amt;
+      (fProd[it.name] ??= { name: it.name, cat, rate, units: 0, amount: 0 });
+      fProd[it.name].units += qty; fProd[it.name].amount += amt;
+    });
+    const fMonthRows = Object.values(fMonth)
+      .map((m) => ({ ...m, orders: m.orders.size }))
+      .sort((a2, b2) => a2.mo.localeCompare(b2.mo));
+    const fCatRows = Object.values(fCat).sort((a2, b2) => b2.amount - a2.amount);
+    const fProdRows = Object.values(fProd).sort((a2, b2) => b2.amount - a2.amount);
+    const fTotal = fCatRows.reduce((a2, r) => a2 + r.amount, 0);
+    const fUnits = fCatRows.reduce((a2, r) => a2 + r.units, 0);
+
+    const fundSection = `
+      <h3>URC fund claim generator</h3>
+      <p class="empty" style="margin:2px 0 10px">What URC deducted from the orders over a period.
+        These funds come off when stock is <b>bought</b>, so this counts purchase quantities, not
+        sales. Rates are each product's own, and match the <b>URC net Capital</b> workbook.</p>
+      <div class="form" style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+        <label>Fund <select id="fundKey">
+          ${FUNDS.map(([k, lab]) => `<option value="${k}" ${k === fundKey ? 'selected' : ''}>${esc(lab)}</option>`).join('')}
+        </select></label>
+        <label>From <input type="date" id="fundFrom" value="${esc(fRange.from)}"></label>
+        <label>To <input type="date" id="fundTo" value="${esc(fRange.to)}"></label>
+        <button type="button" class="mini add" id="fundApply">Generate</button>
+        <button type="button" class="mini" data-fundpreset="may">May to today</button>
+        <button type="button" class="mini" data-fundpreset="year">This year</button>
+        <button type="button" class="mini" data-fundpreset="all">Everything</button>
+      </div>
+      <div class="cards" style="margin-bottom:10px">
+        <div class="card green"><span>${esc(fundLabel)}</span><strong>${fmt(fTotal)}</strong></div>
+        <div class="card"><span>Units bought</span><strong>${Number(fUnits).toLocaleString()}</strong></div>
+        <div class="card"><span>Period</span><strong style="font-size:15px">
+          ${esc(fRange.from)} → ${esc(fRange.to)}</strong></div>
+      </div>
+      ${fMonthRows.length ? `
+      <h4 style="margin:10px 0 4px">By month</h4>
+      ${table(fMonthRows, [
+        { key: 'mo', label: 'Month', render: (r) => `<b>${esc(r.mo)}</b>` },
+        { key: 'orders', label: 'Sales orders', num: 1 },
+        { key: 'units', label: 'Units bought', num: 1, render: (r) => Number(r.units).toLocaleString() },
+        { key: 'amount', label: esc(fundLabel), num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+      ])}
+      <h4 style="margin:12px 0 4px">By category</h4>
+      ${table(fCatRows, [
+        { key: 'cat', label: 'Category', render: (r) => `<b>${esc(r.cat)}</b>` },
+        { key: 'units', label: 'Units', num: 1, render: (r) => Number(r.units).toLocaleString() },
+        { key: 'amount', label: esc(fundLabel), num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+      ])}
+      <h4 style="margin:12px 0 4px">By product <small style="font-weight:400;color:var(--ink-2)">— the working</small></h4>
+      ${table(fProdRows, [
+        { key: 'name', label: 'Product' },
+        { key: 'cat', label: 'Category', render: (r) => esc(r.cat) },
+        { key: 'rate', label: 'Rate per unit', num: 1, render: (r) => fmt(r.rate) },
+        { key: 'units', label: 'Units bought', num: 1, render: (r) => Number(r.units).toLocaleString() },
+        { key: 'amount', label: esc(fundLabel), num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+      ])}
+      <p class="artotals">${fProdRows.length} product(s) &middot; ${Number(fUnits).toLocaleString()} units
+        &middot; <b>${esc(fundLabel)}: ${fmt(fTotal)}</b></p>`
+      : '<p class="empty">No orders in this period carry that fund.</p>'}
+      ${fUnpriced.units ? `<div class="mktbox" style="margin-top:12px">
+        <div><b>${Number(fUnpriced.units).toLocaleString()} unit(s) bought in this period carry no
+          ${esc(fundLabel)} rate</b>, across ${fUnpriced.products.size} product(s), so they add nothing
+          above. RobiChem genuinely has no fund in the workbook; anything else is a rate not yet
+          recorded in Inventory → Pricing.</div></div>` : ''}`;
+
     // ---- stock movement: why the shelf figure is what it is ----
     // 218 adjustment rows had no report anywhere. They are the difference between
     // what was bought and what the count found, so they belong in a report more
@@ -2897,6 +3031,7 @@ const views = {
         with the principal.</p>
       ${moneySection}
       ${collectionsSection}
+      ${fundSection}
       ${stockSection}
       ${salesByCat}
       ${daily}
