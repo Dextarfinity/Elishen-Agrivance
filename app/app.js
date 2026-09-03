@@ -1584,6 +1584,9 @@ function wire(view) {
     if (roS) roS.onchange = () => roGo({ status: roS.value });
     const roC = document.getElementById('roCat');
     if (roC) roC.onchange = () => roGo({ cat: roC.value });
+    // switching scope clears the line filter: the categories differ between them
+    document.querySelectorAll('[data-roscope]').forEach((b) => b.onclick = () =>
+      roGo({ scope: b.dataset.roscope, cat: 'all' }));
     const roX = document.getElementById('roClear');
     if (roX) roX.onclick = () => roGo({ status: 'all', cat: 'all' });
     // reuse the section printer the tables already use, so the reorder sheet

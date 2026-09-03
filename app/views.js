@@ -1655,8 +1655,17 @@ const views = {
     // entirely -- it is counted and ordered on its own cycle, not off this page.
     const isRobichem = (i) => String(i.category || '').toLowerCase().includes('robichem');
     const isLitter = (i) => /litter/i.test(i.name || '');
-    const reorderAt = (i) => (isLitter(i) ? 90 : 20);
-    const isLow = (i) => !isRobichem(i)
+    // The alert has two scopes because the two halves of the shop are ordered on
+    // different cycles. "main" is the sack trade -- 20 a line, 90 for cat litter,
+    // RobiChem left out. "robichem" is RobiChem on its own, at 90, for when that
+    // order is being put together.
+    const rf = window._reorderFilter
+      || (window._reorderFilter = { status: 'all', cat: 'all', scope: 'main' });
+    if (!rf.scope) rf.scope = 'main';
+    const roScope = rf.scope;
+    const reorderAt = (i) => (roScope === 'robichem' || isLitter(i)) ? 90 : 20;
+    const inScope = (i) => roScope === 'robichem' ? isRobichem(i) : !isRobichem(i);
+    const isLow = (i) => inScope(i)
       && onHandBy[i.id] != null && onHandBy[i.id] < reorderAt(i);
     // the pricing editor is opened straight from a matrix row, so it needs the
     // full item records this page already has
@@ -2064,15 +2073,21 @@ const views = {
     const lowStill = lowAll.length - lowOut;
 
     // narrow the list: by whether it is out or merely low, and by line
-    const rf = window._reorderFilter || (window._reorderFilter = { status: 'all', cat: 'all' });
     const lowCats = [...new Set(lowAll.map((i) => i.category || '(uncategorised)'))].sort();
     const lowShown = lowAll.filter((i) =>
       (rf.status === 'all' || (rf.status === 'out' ? i.on_hand <= 0 : i.on_hand > 0))
       && (rf.cat === 'all' || (i.category || '(uncategorised)') === rf.cat));
     const reorderSection = `
       <h3 style="margin:4px 0 6px">Needs reordering
-        <small style="font-weight:400;color:var(--ink-2)">— under 20 on hand, or under 90 for cat
-        litter. RobiChem is ordered on its own cycle and is not counted here.</small></h3>
+        <small style="font-weight:400;color:var(--ink-2)">— ${roScope === 'robichem'
+          ? 'RobiChem only, under 90 on hand'
+          : 'under 20 on hand, or under 90 for cat litter. RobiChem is ordered on its own cycle, so it has its own list.'}</small></h3>
+      <div class="form" style="margin-bottom:10px;display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="mini ${roScope === 'main' ? 'add' : ''}"
+          data-roscope="main">Feeds, pets and litter</button>
+        <button type="button" class="mini ${roScope === 'robichem' ? 'add' : ''}"
+          data-roscope="robichem">RobiChem only</button>
+      </div>
       ${lowAll.length ? `
         <div class="cards" style="margin-bottom:10px">
           <div class="card red"><span>Products to reorder</span><strong>${lowAll.length}</strong></div>
@@ -2107,7 +2122,8 @@ const views = {
           { key: 'sales_price', label: 'Price each', num: 1, render: (r) => fmt(r.sales_price) },
         ]) : '<p class="empty">Nothing matches that filter.</p>'}
         </div>`
-      : '<p class="empty">Nothing is below its reorder level.</p>'}`;
+      : `<p class="empty">Nothing in ${roScope === 'robichem' ? 'RobiChem' : 'the main lines'}
+          is below its reorder level.</p>`}`;
 
     return `<h2>Matrix Report</h2>
       <p class="empty" style="margin:4px 0 12px">URC price flow per sack: <b>ex-plant price</b> less the
