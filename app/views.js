@@ -1205,10 +1205,17 @@ const views = {
       <b>minimum stock</b> reorder level — items at or below their minimum appear in Purchases → Reorder suggestions.
       Saving posts adjustment batches for counts and updates changed minimums.</p>
       <form id="stockTakeForm" class="form">
+        <div class="tblfilter" style="border:1px solid var(--border);border-bottom:0;
+             border-radius:var(--radius) var(--radius) 0 0">
+          <input type="search" id="stkSearch" placeholder="Search the product to count…"
+            autocomplete="off">
+          <span class="tblmatch" id="stkCount">${stock.length} product(s)</span>
+        </div>
         <div class="tablewrap"><table>
           <thead><tr><th>Item</th><th>SKU</th><th>System on hand</th><th>Actual count</th><th>Adjustment</th><th>Minimum stock</th></tr></thead>
           <tbody>
-            ${stock.map((s, i) => `<tr>
+            ${stock.map((s, i) => `<tr data-stkrow="${[s.name, s.alias, s.sku, s.category]
+                .filter(Boolean).join(' ').toLowerCase().replace(/"/g, '&quot;')}">
               <td>${itemLabelHtml(s)}</td><td>${esc(s.sku ?? '')}</td>
               <td class="num">${Number(s.on_hand)}</td>
               <td><input type="number" step="any" class="stockcount" data-ix="${i}" placeholder="—"></td>
@@ -1639,8 +1646,18 @@ const views = {
   // ================= Inventory Dashboard (mirrors the sheet's biggest tab) =================
   // ================= Matrix Report (URC pricing: ex-plant capital → published price) =================
   async matrix() {
-    const [items, sales, claims] = await Promise.all([
-      api.get('/api/items'), api.get('/api/sales'), api.get('/api/claims')]);
+    const [items, sales, claims, mxStock] = await Promise.all([
+      api.get('/api/items'), api.get('/api/sales'), api.get('/api/claims'),
+      api.get('/api/reports/item_stock')]);
+    const onHandBy = Object.fromEntries((mxStock || []).map((r) => [r.id, Number(r.on_hand) || 0]));
+    // Reorder levels: 20 for the sack lines, 90 for cat litter, which is sold by
+    // the piece and turns over far faster. RobiChem is left out of the alert
+    // entirely -- it is counted and ordered on its own cycle, not off this page.
+    const isRobichem = (i) => String(i.category || '').toLowerCase().includes('robichem');
+    const isLitter = (i) => /litter/i.test(i.name || '');
+    const reorderAt = (i) => (isLitter(i) ? 90 : 20);
+    const isLow = (i) => !isRobichem(i)
+      && onHandBy[i.id] != null && onHandBy[i.id] < reorderAt(i);
     // the pricing editor is opened straight from a matrix row, so it needs the
     // full item records this page already has
     window._matrixItems = items;
@@ -1721,6 +1738,7 @@ const views = {
           <thead>
             <tr>
               <th rowspan="2">Product</th>
+              <th rowspan="2">On<br>hand</th>
               <th rowspan="2">Ex-plant<br>price</th>
               <th colspan="${discCols.length + 1 + (hasVat ? 1 : 0)}">Discounts (what lessens the purchase)</th>
               <th rowspan="2">Net price /<br>capital</th>
@@ -1739,8 +1757,12 @@ const views = {
           <tbody>
             ${rows.map((i) => {
               const b = i.price_breakdown;
-              return `<tr>
+              const oh = onHandBy[i.id];
+              return `<tr${isLow(i) ? ' class="lowrow"' : ''}>
                 <td>${esc(i.name)}</td>
+                <td class="num">${oh == null ? '—' : isLow(i)
+                  ? `<span class="badge red">${Number(oh).toLocaleString()}</span>`
+                  : Number(oh).toLocaleString()}</td>
                 <td class="num">${F(N(b.ex_plant))}</td>
                 ${discCols.map(([k]) => `<td class="num">${F(N(b.discounts?.[k]))}</td>`).join('')}
                 <td class="num">${F(pbdOf(i))}</td>
@@ -1756,6 +1778,7 @@ const views = {
             }).join('')}
             <tr style="font-weight:700;border-top:2px solid var(--border)">
               <td>TALLY</td>
+              <td class="num">${Number(rows.reduce((a2, i) => a2 + (onHandBy[i.id] || 0), 0)).toLocaleString()}</td>
               <td class="num">${F(sum((i) => N(i.price_breakdown.ex_plant)))}</td>
               ${discCols.map(([k]) => `<td class="num">${F(sum((i) => N(i.price_breakdown.discounts?.[k])))}</td>`).join('')}
               <td class="num">${F(sum(pbdOf))}</td>
@@ -2031,6 +2054,61 @@ const views = {
     const openClaims = claims.filter((c) => c.status !== 'Credited')
       .reduce((a, c) => a + Number(c.amount), 0);
 
+    // Everything at or under its reorder level, whether or not it is priced on
+    // the matrix -- RobiChem and cat litter never appear in the tables below, and
+    // they are exactly the lines that run out quietly.
+    const lowAll = (items || []).filter(isLow)
+      .map((i) => ({ ...i, on_hand: onHandBy[i.id], level: reorderAt(i) }))
+      .sort((a2, b2) => (a2.on_hand / a2.level) - (b2.on_hand / b2.level));
+    const lowOut = lowAll.filter((i) => i.on_hand <= 0).length;
+    const lowStill = lowAll.length - lowOut;
+
+    // narrow the list: by whether it is out or merely low, and by line
+    const rf = window._reorderFilter || (window._reorderFilter = { status: 'all', cat: 'all' });
+    const lowCats = [...new Set(lowAll.map((i) => i.category || '(uncategorised)'))].sort();
+    const lowShown = lowAll.filter((i) =>
+      (rf.status === 'all' || (rf.status === 'out' ? i.on_hand <= 0 : i.on_hand > 0))
+      && (rf.cat === 'all' || (i.category || '(uncategorised)') === rf.cat));
+    const reorderSection = `
+      <h3 style="margin:4px 0 6px">Needs reordering
+        <small style="font-weight:400;color:var(--ink-2)">— under 20 on hand, or under 90 for cat
+        litter. RobiChem is ordered on its own cycle and is not counted here.</small></h3>
+      ${lowAll.length ? `
+        <div class="cards" style="margin-bottom:10px">
+          <div class="card red"><span>Products to reorder</span><strong>${lowAll.length}</strong></div>
+          <div class="card red"><span>Out of stock</span><strong>${lowOut}</strong></div>
+          <div class="card amber"><span>Low, but some left</span><strong>${lowStill}</strong></div>
+        </div>
+        <div class="form" style="margin-bottom:10px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+          <label>Show <select id="roStatus">
+            <option value="all" ${rf.status === 'all' ? 'selected' : ''}>Everything below its level</option>
+            <option value="out" ${rf.status === 'out' ? 'selected' : ''}>Out of stock only</option>
+            <option value="low" ${rf.status === 'low' ? 'selected' : ''}>Low, but some left</option>
+          </select></label>
+          <label>Line <select id="roCat">
+            <option value="all" ${rf.cat === 'all' ? 'selected' : ''}>All lines</option>
+            ${lowCats.map((c) => `<option value="${esc(c)}" ${rf.cat === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}
+          </select></label>
+          ${(rf.status !== 'all' || rf.cat !== 'all') ? `<button type="button" class="mini" id="roClear">Clear</button>
+            <span class="tblmatch">${lowShown.length} of ${lowAll.length} shown</span>` : ''}
+          <button type="button" class="mini add" id="roPrint" style="margin-left:auto"
+            title="Print this list on the letterhead, as filtered">Generate report</button>
+        </div>
+        <div id="roBlock">
+        ${lowShown.length ? table(lowShown, [
+          { key: 'name', label: 'Product', render: (r) => itemLabelHtml(r) },
+          { key: 'category', label: 'Category', render: (r) => esc(r.category ?? '') },
+          { key: 'on_hand', label: 'On hand', num: 1, render: (r) =>
+              `<span class="badge ${Number(r.on_hand) <= 0 ? 'red' : 'amber'}">${
+                Number(r.on_hand).toLocaleString()}</span>` },
+          { key: 'level', label: 'Reorder at', num: 1 },
+          { key: 'short', label: 'Short by', num: 1, render: (r) =>
+              `<strong>${Number(r.level - r.on_hand).toLocaleString()}</strong>` },
+          { key: 'sales_price', label: 'Price each', num: 1, render: (r) => fmt(r.sales_price) },
+        ]) : '<p class="empty">Nothing matches that filter.</p>'}
+        </div>`
+      : '<p class="empty">Nothing is below its reorder level.</p>'}`;
+
     return `<h2>Matrix Report</h2>
       <p class="empty" style="margin:4px 0 12px">URC price flow per sack: <b>ex-plant price</b> less the
         purchase discounts = <b>net price / capital</b> (what the company pays), then the build-up
@@ -2043,6 +2121,7 @@ const views = {
         <button type="button" class="mini" data-pricelist="outright">Outright dealer</button>
         <button type="button" class="mini" data-pricelist="cod">COD dealer</button>
       </div>
+      ${reorderSection}
       ${monitoring}
       ${incomeSection}
       ${cats.map(section).join('')}

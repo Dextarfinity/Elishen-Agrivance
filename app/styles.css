@@ -319,6 +319,8 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
   font-size: 12.5px; }
 .tblfilter input[type=date] { width: auto; padding: 5px 8px; font-size: 13px; }
 .tblmatch { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+/* a matrix row whose stock has fallen under its reorder level */
+tr.lowrow > td:first-child { box-shadow: inset 3px 0 0 var(--bad, #b02020); font-weight: 600; }
 /* Receivables: money already received reads as settled, so the eye goes to what
    is still owed. The running line under the list wraps rather than overflowing. */
 .paidcell { color: var(--good, #1e5c28); font-variant-numeric: tabular-nums; }

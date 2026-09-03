@@ -1536,6 +1536,33 @@ function wire(view) {
     });
   }
 
+  if (view === 'stocktake') {
+    // Rows are HIDDEN rather than re-rendered: every input carries a data-ix into
+    // the stock list, and a re-render would throw away counts already typed.
+    const box = document.getElementById('stkSearch');
+    const tally = document.getElementById('stkCount');
+    if (box) {
+      const rows = [...document.querySelectorAll('[data-stkrow]')];
+      const apply = () => {
+        const q = box.value.trim().toLowerCase();
+        let shown = 0;
+        rows.forEach((r) => {
+          const hit = !q || r.dataset.stkrow.includes(q);
+          r.style.display = hit ? '' : 'none';
+          if (hit) shown++;
+        });
+        if (tally) {
+          tally.textContent = q ? `${shown} of ${rows.length} product(s)`
+            : `${rows.length} product(s)`;
+        }
+      };
+      box.oninput = apply;
+      // typing Enter in a search box would otherwise submit the whole stock take
+      box.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); apply(); } };
+      apply();
+    }
+  }
+
   if (view === 'matrix') {
     const apply = document.getElementById('mxApply');
     if (apply) {
@@ -1551,6 +1578,26 @@ function wire(view) {
         show('matrix');
       };
     }
+    // reorder alert: narrow by stock state and by product line
+    const roGo = (patch) => { Object.assign(window._reorderFilter, patch); show('matrix'); };
+    const roS = document.getElementById('roStatus');
+    if (roS) roS.onchange = () => roGo({ status: roS.value });
+    const roC = document.getElementById('roCat');
+    if (roC) roC.onchange = () => roGo({ cat: roC.value });
+    const roX = document.getElementById('roClear');
+    if (roX) roX.onclick = () => roGo({ status: 'all', cat: 'all' });
+    // reuse the section printer the tables already use, so the reorder sheet
+    // comes out on the same letterhead as every other report
+    const roP = document.getElementById('roPrint');
+    if (roP) roP.onclick = () => {
+      const f = window._reorderFilter || {};
+      const what = f.status === 'out' ? 'out of stock'
+        : f.status === 'low' ? 'low, some left' : 'below reorder level';
+      const where = (!f.cat || f.cat === 'all') ? 'all lines' : f.cat;
+      const title = `Reorder sheet — ${what}, ${where}`;
+      try { window.printSection(document.getElementById('roBlock'), title); }
+      catch (e) { alert('Print error: ' + (e.message || e)); }
+    };
     document.querySelectorAll('[data-pricelist]').forEach((b) =>
       b.onclick = () => printPriceList(b.dataset.pricelist));
     // remember which report sections are open on this device
