@@ -29,15 +29,56 @@ window.itemLabelHtml = itemLabelHtml;
 window._pg = window._pg || {};        // per-table pagination state (survives refreshes)
 window._tblCache = {};                // rows/cols per table key, for repaging + print
 
-function tableInnerHTML(rows, cols) {
+function tableInnerHTML(rows, cols, sortKey, sortDir, tblKey) {
+  // A header is a sort control when the table is a live one on screen. Printed
+  // copies pass no key, so they render as plain headings.
+  const head = cols.map((c, ix) => {
+    if (!tblKey || !c.label) return `<th>${esc(c.label ?? '')}</th>`;
+    const on = String(sortKey) === String(ix);
+    const arrow = on ? (sortDir === 'desc' ? ' ▼' : ' ▲') : '';
+    return `<th class="sortable${on ? ' sorted' : ''}"
+      data-tblsort="${esc(tblKey)}" data-sortix="${ix}"
+      title="Sort by ${esc(c.label)}">${esc(c.label)}<span class="sortarrow">${arrow}</span></th>`;
+  }).join('');
   return `<table>
-    <thead><tr>${cols.map((c) => `<th>${esc(c.label)}</th>`).join('')}</tr></thead>
+    <thead><tr>${head}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${cols.map((c) =>
       `<td class="${c.num ? 'num' : ''}">${c.render ? c.render(r) : esc(r[c.key])}</td>`).join('')}</tr>`).join('')}
     </tbody></table>`;
 }
 // full, unpaginated table (used by print/PDF so reports always carry every row)
 window.fullTableHTML = (rows, cols) => tableInnerHTML(rows, cols);
+
+// Sort a column the way a reader expects: numbers as numbers, dates as dates,
+// text case-insensitively, and blanks last whichever way the arrow points, so
+// empty cells never crowd the top of a descending sort.
+function sortRows(rows, cols, ix, dir) {
+  const c = cols[ix];
+  if (!c) return rows;
+  const raw = (r) => (c.key != null && r[c.key] != null && r[c.key] !== '')
+    ? r[c.key]
+    : (c.render ? (_stripDiv.innerHTML = String(c.render(r)), _stripDiv.textContent) : '');
+  const blank = (v) => v == null || v === '' || v === '-' || v === '—';
+  // Strip the money formatting first, THEN decide whether what is left is a
+  // number. Testing the original string instead turns "Charlie" into 0 and makes
+  // every text row compare equal.
+  const num = (v) => {
+    const t = String(v).replace(/[,\s₱$]/g, '').trim();
+    if (t === '' || !/^-?\d*\.?\d+$/.test(t)) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+  const sign = dir === 'desc' ? -1 : 1;
+  return [...rows].sort((a, b) => {
+    const va = raw(a), vb = raw(b);
+    if (blank(va) && blank(vb)) return 0;
+    if (blank(va)) return 1;              // blanks sink, both directions
+    if (blank(vb)) return -1;
+    const na = num(va), nb = num(vb);
+    if (na != null && nb != null) return sign * (na - nb);
+    return sign * String(va).localeCompare(String(vb), undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
 
 const _stripDiv = document.createElement('div');
 function rowSearchText(r, cols) {
@@ -52,6 +93,7 @@ function tableShell(key) {
   const { rows: allRows, cols, extra } = window._tblCache[key];
   const pg = window._pg[key] || (window._pg[key] = { page: 0, size: 50, q: '', from: '', to: '' });
   pg.q = pg.q ?? ''; pg.from = pg.from ?? ''; pg.to = pg.to ?? '';
+  pg.sort = pg.sort ?? null; pg.dir = pg.dir ?? 'asc';
 
   // which column carries the row's date (for the range filter)
   const dateCol = cols.find((c) => c.key && String(c.key).toLowerCase().includes('date'));
@@ -87,6 +129,10 @@ function tableShell(key) {
         title="Print this section">&#128424;<span class="secprint-t"> Print</span></button>
     </div>`;
 
+  if (pg.sort != null) rows = sortRows(rows, cols, Number(pg.sort), pg.dir);
+  // the printed copy follows what is on screen, sort included
+  window._tblCache[key].sorted = rows;
+
   const size = pg.size === 'All' ? Math.max(rows.length, 1) : pg.size;
   const pages = Math.max(1, Math.ceil(rows.length / size));
   if (pg.page >= pages) pg.page = pages - 1;
@@ -103,7 +149,8 @@ function tableShell(key) {
         <button type="button" class="mini" data-pgnext="${key}" ${pg.page >= pages - 1 ? 'disabled' : ''}>Next ›</button>
       </span>
     </div>` : '';
-  return `<div class="tablewrap" data-tbl="${key}">${filterBar}${tableInnerHTML(slice, cols)}${pager}</div>`;
+  return `<div class="tablewrap" data-tbl="${key}">${filterBar}${
+    tableInnerHTML(slice, cols, pg.sort, pg.dir, key)}${pager}</div>`;
 }
 
 // opts.extra is a control the calling view wants beside this table's own search
@@ -716,7 +763,40 @@ const views = {
       else if (d <= 60) buckets.b60 += bal;
       else buckets.b90 += bal;
     });
+    // Where an invoice stands against its own due date. days_overdue is clamped
+    // at zero in the view, so it cannot tell "due today" from "due next week" --
+    // the date itself has to be compared. Local date, because a due date is a
+    // calendar day in the shop, not an instant in UTC.
+    const arToday = new Date().toLocaleDateString('en-CA');
+    const dueStateOf = (r) => {
+      const d = String(r.due_date || r.date || '').slice(0, 10);
+      if (!d) return 'notyet';
+      return d < arToday ? 'overdue' : d === arToday ? 'due' : 'notyet';
+    };
+    const DUE_LABEL = { overdue: 'Overdue', due: 'Due today', notyet: 'Not yet due' };
+    const dueTally = { overdue: { n: 0, amt: 0 }, due: { n: 0, amt: 0 }, notyet: { n: 0, amt: 0 } };
+    allOpen.forEach((r) => {
+      const t = dueTally[dueStateOf(r)];
+      t.n += 1; t.amt += Number(r.balance) || 0;
+    });
+    const dueSel = window._arDue || 'all';
+    window._arDue = dueSel;
+    const dueCard = (k, tone) => `
+      <button type="button" class="card ${tone} arduecard${dueSel === k ? ' on' : ''}"
+        data-ardue="${k}" title="Show only these">
+        <span>${DUE_LABEL[k]}</span><strong>${fmt(dueTally[k].amt)}</strong>
+        <small>${dueTally[k].n} invoice(s)</small></button>`;
     const agingCards = `
+      <div class="cards" style="margin-bottom:10px">
+        ${dueCard('overdue', 'red')}
+        ${dueCard('due', 'amber')}
+        ${dueCard('notyet', 'green')}
+        <button type="button" class="card arduecard${dueSel === 'all' ? ' on' : ''}"
+          data-ardue="all" title="Show everything outstanding">
+          <span>All outstanding</span>
+          <strong>${fmt(dueTally.overdue.amt + dueTally.due.amt + dueTally.notyet.amt)}</strong>
+          <small>${dueTally.overdue.n + dueTally.due.n + dueTally.notyet.n} invoice(s)</small></button>
+      </div>
       <div class="cards" style="margin-bottom:16px">
         <div class="card green"><span>Current (not due)</span><strong>${fmt(buckets.current)}</strong></div>
         <div class="card amber"><span>1–30 days overdue</span><strong>${fmt(buckets.b30)}</strong></div>
@@ -739,7 +819,9 @@ const views = {
     if (showAll || selRow) {
       const invoices = (showAll
         ? await api.get('/api/sales')
-        : await api.get(`/api/sales?customer=${encodeURIComponent(selRow.customer)}`)).filter(isOpen);
+        : await api.get(`/api/sales?customer=${encodeURIComponent(selRow.customer)}`))
+        .filter(isOpen)
+        .filter((x) => dueSel === 'all' || dueStateOf(x) === dueSel);
       // grouped by customer, oldest debt first, so the follow-up list reads top-down
       if (showAll) {
         invoices.sort((a, b) => String(a.customer ?? '').localeCompare(String(b.customer ?? ''))
@@ -784,7 +866,10 @@ const views = {
       const sum = (f) => invoices.reduce((a, s) => a + f(s), 0);
       const invoiced = sum((s) => Number(s.total));
       const paid = sum((s) => Number(s.amount_paid));
-      detail += `<p class="artotals">
+      detail += `${dueSel !== 'all' ? `<p class="tblmatch" style="margin-top:6px">
+        Showing <b>${esc(DUE_LABEL[dueSel].toLowerCase())}</b> only &mdash;
+        <button type="button" class="mini" data-ardue="all">show everything outstanding</button></p>` : ''}
+        <p class="artotals">
         ${invoices.length} unpaid invoice(s) &middot; invoiced ${fmt(invoiced)}
         ${paid ? `&minus; already paid ${fmt(paid)}` : ''}
         &middot; <b>to pay: ${fmt(invoiced - paid)}</b></p>`;
@@ -1198,8 +1283,105 @@ const views = {
 
   // ================= Stock Take =================
   async stocktake() {
-    const stock = await api.get('/api/reports/item_stock');
+    const [stock, stkPur, stkSales, stkAdj] = await Promise.all([
+      api.get('/api/reports/item_stock'), api.get('/api/purchases'),
+      api.get('/api/sales'), api.get('/api/manual_inventory')]);
     window._stockRows = stock;
+
+    // Where each item's figure comes from. The count is only trustworthy if it
+    // can be reconciled against what actually arrived on the POs and what has
+    // since gone out, so every movement is indexed by item and kept in date
+    // order -- receipts, sales and past adjustments alike.
+    const nameById = Object.fromEntries((stock || []).map((r) => [r.id, r.name]));
+    const idByName = Object.fromEntries((stock || []).map((r) => [r.name, r.id]));
+    const moves = {};
+    const push = (id, m) => { if (id != null) (moves[id] ??= []).push(m); };
+    (stkPur || []).forEach((pu) => {
+      if (String(pu.status).toLowerCase().includes('cancel')) return;
+      const qty = Number(pu.received_qty ?? pu.purchase_qty) || 0;
+      if (!qty) return;
+      const ordered = Number(pu.purchase_qty) || 0;
+      const short = ordered - qty;
+      push(pu.item_id, { kind: 'in', date: String(pu.received_date || pu.order_date).slice(0, 10),
+        ref: pu.ref_id || 'PO', qty, ordered, short,
+        note: `ordered ${String(pu.order_date).slice(0, 10)}`
+          + (pu.unit_cost ? ` at ${fmt(pu.unit_cost)}` : '')
+          + (short ? ` — ${Number(short).toLocaleString()} short of the ${
+              Number(ordered).toLocaleString()} ordered` : '') });
+    });
+    (stkSales || []).filter((x) => !String(x.status).toLowerCase().includes('cancel'))
+      .forEach((x) => (x.items || []).forEach((it) => {
+        const qty = Number(it.qty) || 0;
+        if (!qty) return;
+        push(it.item_id ?? idByName[it.item], { kind: 'out',
+          date: String(x.date).slice(0, 10), ref: x.sales_no, qty,
+          note: (x.customer || '') + (it.promo ? ' — free goods' : '') });
+      }));
+    (stkAdj || []).forEach((m) => push(m.item_id, { kind: 'adj',
+      date: String(m.date).slice(0, 10), ref: m.batch_no || 'adjustment',
+      qty: Number(m.qty) || 0, note: m.notes || '' }));
+    Object.values(moves).forEach((l) => l.sort((a2, b2) => String(a2.date).localeCompare(String(b2.date))));
+    window._stkMoves = moves;
+    window._stkNames = nameById;
+
+    // Each sales order, and what it actually delivered. This is the other half of
+    // a count: the sheet says what is on the shelf, the order says what should
+    // have arrived and when, so a shortfall can be traced to the SO it came from.
+    const soIdx = {};
+    (stkPur || []).forEach((pu) => {
+      if (String(pu.status).toLowerCase().includes('cancel')) return;
+      const ref = pu.ref_id || '(no reference)';
+      const g = (soIdx[ref] ??= { ref, ordered_on: null, received_on: null, lines: [],
+        qty_ordered: 0, qty_received: 0, cost: 0 });
+      const od = String(pu.order_date).slice(0, 10);
+      const rd = pu.received_date ? String(pu.received_date).slice(0, 10) : null;
+      if (!g.ordered_on || od < g.ordered_on) g.ordered_on = od;
+      if (rd && (!g.received_on || rd > g.received_on)) g.received_on = rd;
+      const ordered = Number(pu.purchase_qty) || 0;
+      const received = Number(pu.received_qty) || 0;
+      g.qty_ordered += ordered; g.qty_received += received;
+      g.cost += received * (Number(pu.unit_cost) || 0);
+      g.lines.push({ item_id: pu.item_id, name: nameById[pu.item_id] || `item #${pu.item_id}`,
+        ordered, received, short: ordered - received, unit_cost: Number(pu.unit_cost) || 0 });
+    });
+    const soRows = Object.values(soIdx)
+      .map((g) => ({ ...g, short: g.qty_ordered - g.qty_received }))
+      .sort((a2, b2) => String(b2.ordered_on).localeCompare(String(a2.ordered_on)));
+    window._stkSO = Object.fromEntries(soRows.map((g) => [g.ref, g]));
+    const anyShort = soRows.some((g) => Math.abs(g.short) > 0.001);
+
+    const soSection = soRows.length ? `
+      <h3 style="margin:22px 0 4px">Received by sales order</h3>
+      <p class="empty" style="margin:2px 0 10px">Which order each delivery came from, and whether the
+        quantity that arrived matched the quantity ordered. Click an order to see its items against
+        what is on the shelf now.${anyShort ? '' : ` <b>Every line so far has arrived in full</b> —
+        the Purchases page fills the received quantity in from the ordered one, so a short delivery
+        only shows here if someone corrects it by hand when receiving.`}</p>
+      ${table(soRows, [
+        { key: 'ref', label: 'Sales order', render: (r) =>
+            `<button type="button" class="linkish" data-stkso="${esc(r.ref)}"
+               title="What this order delivered">${esc(r.ref)}</button>` },
+        { key: 'ordered_on', label: 'Ordered', render: (r) => d10(r.ordered_on) },
+        { key: 'received_on', label: 'Received', render: (r) => r.received_on
+            ? d10(r.received_on) : '<small style="color:var(--ink-3)">—</small>' },
+        { key: 'lines', label: 'Products', num: 1, render: (r) => r.lines.length },
+        { key: 'qty_ordered', label: 'Ordered', num: 1,
+          render: (r) => Number(r.qty_ordered).toLocaleString() },
+        { key: 'qty_received', label: 'Arrived', num: 1,
+          render: (r) => `<strong>${Number(r.qty_received).toLocaleString()}</strong>` },
+        { key: 'short', label: 'Short', num: 1, render: (r) => Math.abs(r.short) > 0.001
+            ? `<span class="badge red">${Number(r.short).toLocaleString()}</span>`
+            : '<small style="color:var(--ink-3)">—</small>' },
+        { key: 'cost', label: 'Cost', num: 1, render: (r) => fmt(r.cost) },
+      ])}` : '';
+
+    // the most recent receipt, so the sheet says when this last came in
+    const lastIn = {};
+    Object.entries(moves).forEach(([id, l]) => {
+      const ins = l.filter((m) => m.kind === 'in');
+      if (ins.length) lastIn[id] = ins[ins.length - 1];
+    });
+
     return `<h2>Stock Take</h2>
       <p class="empty">Enter the <b>actual counted</b> on-hand quantity per item (blank = skip), and set the
       <b>minimum stock</b> reorder level — items at or below their minimum appear in Purchases → Reorder suggestions.
@@ -1212,11 +1394,19 @@ const views = {
           <span class="tblmatch" id="stkCount">${stock.length} product(s)</span>
         </div>
         <div class="tablewrap"><table>
-          <thead><tr><th>Item</th><th>SKU</th><th>System on hand</th><th>Actual count</th><th>Adjustment</th><th>Minimum stock</th></tr></thead>
+          <thead><tr><th>Item</th><th>SKU</th><th>Last received</th><th>System on hand</th>
+            <th>Actual count</th><th>Adjustment</th><th>Minimum stock</th></tr></thead>
           <tbody>
             ${stock.map((s, i) => `<tr data-stkrow="${[s.name, s.alias, s.sku, s.category]
                 .filter(Boolean).join(' ').toLowerCase().replace(/"/g, '&quot;')}">
-              <td>${itemLabelHtml(s)}</td><td>${esc(s.sku ?? '')}</td>
+              <td><button type="button" class="linkish" data-stkmove="${s.id}"
+                title="Where this figure came from — every PO receipt, sale and adjustment"
+                >${itemLabelHtml(s)}</button></td>
+              <td>${esc(s.sku ?? '')}</td>
+              <td class="num">${lastIn[s.id]
+                ? `${d10(lastIn[s.id].date)} <small style="color:var(--ink-2)">${
+                    esc(lastIn[s.id].ref)} &middot; ${Number(lastIn[s.id].qty).toLocaleString()}</small>`
+                : '<small style="color:var(--ink-3)">never</small>'}</td>
               <td class="num">${Number(s.on_hand)}</td>
               <td><input type="number" step="any" class="stockcount" data-ix="${i}" placeholder="—"></td>
               <td class="num adjcell" id="adj${i}">—</td>
@@ -1229,7 +1419,28 @@ const views = {
           <label>Date <input type="date" name="date" value="${new Date().toISOString().slice(0, 10)}"></label>
         </div>
         <button type="submit" class="primary">Save stock take</button>
-      </form>`;
+      </form>
+      ${soSection}
+      <div id="stkSoModal" class="modal hidden">
+        <div class="modal-box" style="width:min(940px,100%)">
+          <div class="modal-head">
+            <h3 id="stkSoTitle" style="margin:0;flex:1">Sales order</h3>
+            <button type="button" class="mini" id="stkSoPrint">Generate report</button>
+            <button type="button" class="mini" id="stkSoClose">Close</button>
+          </div>
+          <div class="modal-body" id="stkSoBody"></div>
+        </div>
+      </div>
+      <div id="stkMoveModal" class="modal hidden">
+        <div class="modal-box" style="width:min(940px,100%)">
+          <div class="modal-head">
+            <h3 id="stkMoveTitle" style="margin:0;flex:1">Stock movement</h3>
+            <button type="button" class="mini" id="stkMovePrint">Generate report</button>
+            <button type="button" class="mini" id="stkMoveClose">Close</button>
+          </div>
+          <div class="modal-body" id="stkMoveBody"></div>
+        </div>
+      </div>`;
   },
 
   // ================= Purchases (CRUD + reorder suggestions + vendors + performance) =================
@@ -1646,9 +1857,30 @@ const views = {
   // ================= Inventory Dashboard (mirrors the sheet's biggest tab) =================
   // ================= Matrix Report (URC pricing: ex-plant capital → published price) =================
   async matrix() {
-    const [items, sales, claims, mxStock] = await Promise.all([
+    const [items, sales, claims, mxStock, mxDeliv] = await Promise.all([
       api.get('/api/items'), api.get('/api/sales'), api.get('/api/claims'),
-      api.get('/api/reports/item_stock')]);
+      api.get('/api/reports/item_stock'), api.get('/api/deliveries')]);
+    // Who actually received each product. A delivery receipt covers a whole
+    // invoice, so the item lines come from the sale it belongs to -- that is what
+    // lets a product be traced back to the people who took it.
+    const saleById = Object.fromEntries((sales || []).map((x) => [x.id, x]));
+    const delivByItem = {};
+    (mxDeliv || []).forEach((d) => {
+      const sale = saleById[d.sale_id];
+      if (!sale) return;
+      (sale.items || []).forEach((it) => {
+        (delivByItem[it.item] ??= []).push({
+          dr_no: d.dr_no, date: d.date, status: d.status, customer: d.customer ?? sale.customer,
+          store_farm: d.store_farm ?? sale.store_farm, sales_no: sale.sales_no,
+          delivered_by: d.delivered_by, received_by: d.received_by,
+          delivered_date: d.delivered_date, qty: Number(it.qty) || 0, promo: !!it.promo,
+        });
+      });
+    });
+    Object.values(delivByItem).forEach((list) =>
+      list.sort((x, y) => String(y.date).localeCompare(String(x.date))));
+    window._delivByItem = delivByItem;
+    const delivCount = (name) => (delivByItem[name] || []).length;
     const onHandBy = Object.fromEntries((mxStock || []).map((r) => [r.id, Number(r.on_hand) || 0]));
     // Reorder levels: 20 for the sack lines, 90 for cat litter, which is sold by
     // the piece and turns over far faster. RobiChem is left out of the alert
@@ -1767,8 +1999,11 @@ const views = {
             ${rows.map((i) => {
               const b = i.price_breakdown;
               const oh = onHandBy[i.id];
+              const dn = delivCount(i.name);
               return `<tr${isLow(i) ? ' class="lowrow"' : ''}>
-                <td>${esc(i.name)}</td>
+                <td><button type="button" class="linkish" data-whodel="${esc(i.name)}"
+                  title="Who has received this product">${esc(i.name)}${dn
+                    ? ` <span class="badge green">${dn}</span>` : ''}</button></td>
                 <td class="num">${oh == null ? '—' : isLow(i)
                   ? `<span class="badge red">${Number(oh).toLocaleString()}</span>`
                   : Number(oh).toLocaleString()}</td>
@@ -2111,7 +2346,9 @@ const views = {
         </div>
         <div id="roBlock">
         ${lowShown.length ? table(lowShown, [
-          { key: 'name', label: 'Product', render: (r) => itemLabelHtml(r) },
+          { key: 'name', label: 'Product', render: (r) =>
+              `<button type="button" class="linkish" data-whodel="${esc(r.name)}"
+                 title="Who has received this product">${itemLabelHtml(r)}</button>` },
           { key: 'category', label: 'Category', render: (r) => esc(r.category ?? '') },
           { key: 'on_hand', label: 'On hand', num: 1, render: (r) =>
               `<span class="badge ${Number(r.on_hand) <= 0 ? 'red' : 'amber'}">${
@@ -2142,6 +2379,16 @@ const views = {
       ${incomeSection}
       ${cats.map(section).join('')}
       ${robiSection}
+      <div id="whoDelModal" class="modal hidden">
+        <div class="modal-box" style="width:min(940px,100%)">
+          <div class="modal-head">
+            <h3 id="whoDelTitle" style="margin:0;flex:1">Who received this</h3>
+            <button type="button" class="mini" id="whoDelPrint">Generate report</button>
+            <button type="button" class="mini" id="whoDelClose">Close</button>
+          </div>
+          <div class="modal-body" id="whoDelBody"></div>
+        </div>
+      </div>
       ${clp('claims', `Claims to URC <small style="font-weight:400;color:var(--ink-2)">
           — not yet credited: ${fmt(openClaims)}</small>`, `
       <div class="cards" style="margin:6px 0">

@@ -30,7 +30,9 @@ function buildPrintHTML(title, rootEl) {
     const c = window._tblCache && window._tblCache[w.dataset.tbl];
     // one unprintable section must not take the whole report down with it
     try {
-      if (c && typeof window.fullTableHTML === 'function') w.innerHTML = window.fullTableHTML(c.rows, c.cols);
+      if (c && typeof window.fullTableHTML === 'function') {
+        w.innerHTML = window.fullTableHTML(c.sorted || c.rows, c.cols);
+      }
     } catch (e) { /* leave the on-screen page of that table as it stands */ }
   });
   // inputs/selects become their plain values (so filters & draft entries print readably)

@@ -1537,6 +1537,133 @@ function wire(view) {
   }
 
   if (view === 'stocktake') {
+    // Clicking a product shows how its figure was arrived at: every PO receipt
+    // by date, everything sold since, every past adjustment, and the running
+    // balance down the page -- so a count that disagrees can be traced to the
+    // movement that caused it rather than simply overwritten.
+    const mvModal = document.getElementById('stkMoveModal');
+    const mvBody = document.getElementById('stkMoveBody');
+    document.querySelectorAll('[data-stkmove]').forEach((b) => b.onclick = () => {
+      const id = b.dataset.stkmove;
+      const name = (window._stkNames || {})[id] || 'this product';
+      const list = (window._stkMoves || {})[id] || [];
+      const row = (window._stockRows || []).find((r) => String(r.id) === String(id)) || {};
+      const n = (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 3 });
+      const esc2 = (v) => String(v ?? '').replace(/[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const inQty = list.filter((m) => m.kind === 'in').reduce((a2, m) => a2 + m.qty, 0);
+      const outQty = list.filter((m) => m.kind === 'out').reduce((a2, m) => a2 + m.qty, 0);
+      const adjQty = list.filter((m) => m.kind === 'adj').reduce((a2, m) => a2 + m.qty, 0);
+      const opening = Number(row.initial_stock) || 0;
+      const expected = opening + inQty - outQty + adjQty;
+      const onHand = Number(row.on_hand) || 0;
+      let bal = opening;
+      document.getElementById('stkMoveTitle').textContent = `Stock movement — ${name}`;
+      mvBody.innerHTML = `
+        <div class="cards" style="margin-bottom:12px">
+          <div class="card"><span>Opening</span><strong>${n(opening)}</strong></div>
+          <div class="card green"><span>Received on POs</span><strong>${n(inQty)}</strong></div>
+          <div class="card red"><span>Sold</span><strong>${n(outQty)}</strong></div>
+          <div class="card ${adjQty < 0 ? 'amber' : ''}"><span>Past adjustments</span>
+            <strong>${n(adjQty)}</strong></div>
+          <div class="card ${Math.abs(expected - onHand) > 0.001 ? 'red' : 'green'}">
+            <span>Should be on hand</span><strong>${n(expected)}</strong></div>
+        </div>
+        ${Math.abs(expected - onHand) > 0.001 ? `<div class="mktbox" style="margin-bottom:10px">
+          <div>The movements add up to <b>${n(expected)}</b> but the system shows
+          <b>${n(onHand)}</b>. Count the shelf and enter what is really there.</div></div>` : ''}
+        ${!list.length ? '<p class="empty">Nothing has moved for this product yet.</p>' : `
+        <div class="tablewrap"><table>
+          <thead><tr><th>Date</th><th>What</th><th>Reference</th><th class="num">In</th>
+            <th class="num">Out</th><th class="num">Balance</th><th>Note</th></tr></thead>
+          <tbody>
+            <tr><td>—</td><td><b>Opening</b></td><td></td><td class="num"></td>
+              <td class="num"></td><td class="num"><b>${n(opening)}</b></td><td></td></tr>
+            ${list.map((m) => {
+              bal += (m.kind === 'out') ? -m.qty : m.qty;
+              const what = m.kind === 'in' ? '<span class="badge green">Received</span>'
+                : m.kind === 'out' ? '<span class="badge amber">Sold</span>'
+                : '<span class="badge">Adjustment</span>';
+              return `<tr>
+                <td>${esc2(m.date)}</td><td>${what}</td><td>${esc2(m.ref)}</td>
+                <td class="num">${m.kind === 'out' ? '' : n(m.qty)}</td>
+                <td class="num">${m.kind === 'out' ? n(m.qty) : ''}</td>
+                <td class="num"><b>${n(bal)}</b></td>
+                <td><small>${esc2(m.note)}</small></td></tr>`;
+            }).join('')}
+          </tbody>
+        </table></div>`}`;
+      mvModal.classList.remove('hidden');
+    });
+    // an order, opened: what it said it would deliver, what arrived, and what is
+    // left of it on the shelf today
+    const soModal = document.getElementById('stkSoModal');
+    const soBody = document.getElementById('stkSoBody');
+    document.querySelectorAll('[data-stkso]').forEach((b) => b.onclick = () => {
+      const ref = b.dataset.stkso;
+      const g = (window._stkSO || {})[ref];
+      if (!g) return;
+      const n = (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 3 });
+      const money = (v) => Number(v || 0).toLocaleString(undefined,
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const esc2 = (v) => String(v ?? '').replace(/[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const onHandOf = (id) => {
+        const r = (window._stockRows || []).find((x) => String(x.id) === String(id));
+        return r ? Number(r.on_hand) || 0 : null;
+      };
+      document.getElementById('stkSoTitle').textContent = `${ref} — ordered ${g.ordered_on}`;
+      soBody.innerHTML = `
+        <div class="cards" style="margin-bottom:12px">
+          <div class="card"><span>Ordered</span><strong>${n(g.qty_ordered)}</strong></div>
+          <div class="card green"><span>Arrived</span><strong>${n(g.qty_received)}</strong></div>
+          <div class="card ${Math.abs(g.short) > 0.001 ? 'red' : 'green'}"><span>Short</span>
+            <strong>${n(g.short)}</strong></div>
+          <div class="card"><span>Products</span><strong>${g.lines.length}</strong></div>
+          <div class="card"><span>Cost of what arrived</span><strong>${money(g.cost)}</strong></div>
+        </div>
+        <div class="tablewrap"><table>
+          <thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">Arrived</th>
+            <th class="num">Short</th><th class="num">Unit cost</th><th class="num">On shelf now</th>
+            <th class="num">Sold since</th></tr></thead>
+          <tbody>${g.lines.map((l) => {
+            const oh = onHandOf(l.item_id);
+            const since = l.received - (oh == null ? l.received : oh);
+            return `<tr>
+              <td>${esc2(l.name)}</td>
+              <td class="num">${n(l.ordered)}</td>
+              <td class="num"><b>${n(l.received)}</b></td>
+              <td class="num">${Math.abs(l.short) > 0.001
+                ? `<span class="badge red">${n(l.short)}</span>` : '—'}</td>
+              <td class="num">${money(l.unit_cost)}</td>
+              <td class="num">${oh == null ? '—'
+                : `<span class="badge ${oh <= 0 ? 'red' : 'green'}">${n(oh)}</span>`}</td>
+              <td class="num">${oh == null ? '—' : n(since)}</td>
+            </tr>`;
+          }).join('')}</tbody>
+        </table></div>
+        <p class="tblmatch" style="margin-top:8px">"Sold since" is what this order brought in less
+          what is on the shelf today, so it also absorbs any later delivery of the same product.</p>`;
+      soModal.classList.remove('hidden');
+    });
+    const soX = document.getElementById('stkSoClose');
+    if (soX) soX.onclick = () => soModal.classList.add('hidden');
+    if (soModal) soModal.onclick = (e2) => { if (e2.target === soModal) soModal.classList.add('hidden'); };
+    const soP = document.getElementById('stkSoPrint');
+    if (soP) soP.onclick = () => {
+      try { window.printSection(soBody, document.getElementById('stkSoTitle').textContent); }
+      catch (err) { alert('Print error: ' + (err.message || err)); }
+    };
+    const mvX = document.getElementById('stkMoveClose');
+    if (mvX) mvX.onclick = () => mvModal.classList.add('hidden');
+    if (mvModal) mvModal.onclick = (e2) => { if (e2.target === mvModal) mvModal.classList.add('hidden'); };
+    const mvP = document.getElementById('stkMovePrint');
+    if (mvP) mvP.onclick = () => {
+      const title = document.getElementById('stkMoveTitle').textContent;
+      try { window.printSection(mvBody, title); }
+      catch (err) { alert('Print error: ' + (err.message || err)); }
+    };
+
     // Rows are HIDDEN rather than re-rendered: every input carries a data-ix into
     // the stock list, and a re-render would throw away counts already typed.
     const box = document.getElementById('stkSearch');
@@ -1600,6 +1727,60 @@ function wire(view) {
       const title = `Reorder sheet — ${what}, ${where}`;
       try { window.printSection(document.getElementById('roBlock'), title); }
       catch (e) { alert('Print error: ' + (e.message || e)); }
+    };
+    // clicking a product name traces it: every delivery receipt that carried it,
+    // who took it and who signed for it
+    const wdModal = document.getElementById('whoDelModal');
+    const wdBody = document.getElementById('whoDelBody');
+    document.querySelectorAll('[data-whodel]').forEach((b) => b.onclick = () => {
+      const name = b.dataset.whodel;
+      const rows = (window._delivByItem || {})[name] || [];
+      const money = (n) => Number(n || 0).toLocaleString(undefined,
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const esc2 = (v) => String(v ?? '').replace(/[&<>"]/g,
+        (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+      const total = rows.reduce((a2, r) => a2 + r.qty, 0);
+      const free = rows.filter((r) => r.promo).reduce((a2, r) => a2 + r.qty, 0);
+      const people = new Set(rows.map((r) => String(r.customer || '').trim().toUpperCase()));
+      const pending = rows.filter((r) => r.status !== 'Delivered').length;
+      document.getElementById('whoDelTitle').textContent = `Who received ${name}`;
+      wdBody.innerHTML = !rows.length
+        ? '<p class="empty">This product has never gone out on a delivery receipt.</p>'
+        : `<div class="cards" style="margin-bottom:12px">
+             <div class="card"><span>Delivery receipts</span><strong>${rows.length}</strong></div>
+             <div class="card"><span>Customers</span><strong>${people.size}</strong></div>
+             <div class="card green"><span>Units delivered</span><strong>${money(total)}</strong></div>
+             ${free ? `<div class="card green"><span>Of which free</span><strong>${money(free)}</strong></div>` : ''}
+             ${pending ? `<div class="card amber"><span>Not yet signed for</span><strong>${pending}</strong></div>` : ''}
+           </div>
+           <div class="tablewrap"><table>
+             <thead><tr><th>DR No.</th><th>Date</th><th>Customer</th><th>Stores/Farms</th>
+               <th class="num">Qty</th><th>Invoice</th><th>Delivered by</th><th>Received by</th>
+               <th>Status</th></tr></thead>
+             <tbody>${rows.map((r) => `<tr>
+               <td>${esc2(r.dr_no)}</td>
+               <td>${esc2(String(r.date ?? '').slice(0, 10))}</td>
+               <td><b>${esc2(r.customer)}</b></td>
+               <td>${esc2(r.store_farm)}</td>
+               <td class="num">${money(r.qty)}${r.promo
+                 ? ' <span class="badge green">FREE</span>' : ''}</td>
+               <td>${esc2(r.sales_no)}</td>
+               <td>${esc2(r.delivered_by)}</td>
+               <td>${esc2(r.received_by)}</td>
+               <td><span class="badge ${r.status === 'Delivered' ? 'green' : 'amber'}">${
+                 esc2(r.status)}</span></td>
+             </tr>`).join('')}</tbody>
+           </table></div>`;
+      wdModal.classList.remove('hidden');
+    });
+    const wdX = document.getElementById('whoDelClose');
+    if (wdX) wdX.onclick = () => wdModal.classList.add('hidden');
+    if (wdModal) wdModal.onclick = (e2) => { if (e2.target === wdModal) wdModal.classList.add('hidden'); };
+    const wdP = document.getElementById('whoDelPrint');
+    if (wdP) wdP.onclick = () => {
+      const title = document.getElementById('whoDelTitle').textContent;
+      try { window.printSection(wdBody, title); }
+      catch (err) { alert('Print error: ' + (err.message || err)); }
     };
     document.querySelectorAll('[data-pricelist]').forEach((b) =>
       b.onclick = () => printPriceList(b.dataset.pricelist));
@@ -1812,6 +1993,11 @@ function wire(view) {
   if (view === 'receivables') {
     const sel = document.getElementById('arCustomer');
     if (sel) sel.onchange = () => { window._arCustomer = sel.value; show('receivables'); };
+    // the due-state cards double as the filter: clicking one narrows the list
+    document.querySelectorAll('[data-ardue]').forEach((b) => b.onclick = () => {
+      window._arDue = b.dataset.ardue;
+      show('receivables');
+    });
     const soa = document.getElementById('soaBtn');
     if (soa) soa.onclick = () => {
       const name = document.getElementById('arCustomer')?.selectedOptions[0]?.textContent;
@@ -2685,6 +2871,21 @@ document.addEventListener('input', (e) => {
   }, 250);
 });
 document.addEventListener('click', (e) => {
+  // a header click sorts: first click ascending, clicking the same one again
+  // reverses it, and a third returns the table to its natural order
+  const th = e.target.closest && e.target.closest('[data-tblsort]');
+  if (th) {
+    const key = th.dataset.tblsort, ix = Number(th.dataset.sortix);
+    const pg = window._pg[key];
+    if (pg) {
+      if (String(pg.sort) !== String(ix)) { pg.sort = ix; pg.dir = 'asc'; }
+      else if (pg.dir === 'asc') pg.dir = 'desc';
+      else { pg.sort = null; pg.dir = 'asc'; }
+      pg.page = 0;
+      repageTable(key);
+    }
+    return;
+  }
   const t = e.target.closest && e.target.closest('[data-pgprev],[data-pgnext],[data-pgclear]');
   if (!t) return;
   const d = t.dataset;

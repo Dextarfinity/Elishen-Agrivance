@@ -255,6 +255,13 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
 .arhead { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 18px; }
 .arhead label { min-width: 250px; }
 .arcard { min-width: 210px; }
+/* the due-state cards are also the filter, so they must read as pressable */
+.arduecard { text-align: left; font: inherit; cursor: pointer; border-width: 1px;
+  transition: transform .08s ease, box-shadow .12s ease; }
+.arduecard:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.arduecard.on { outline: 2px solid var(--accent, #e3a71f); outline-offset: 1px; }
+.arduecard small { display: block; margin-top: 2px; font-size: 11px; color: var(--ink-2);
+  font-weight: 600; }
 
 
 /* ---------- Stock take ---------- */
@@ -319,6 +326,16 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
   font-size: 12.5px; }
 .tblfilter input[type=date] { width: auto; padding: 5px 8px; font-size: 13px; }
 .tblmatch { font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+/* every column heading is a sort control: one click ascending, again to reverse,
+   a third to drop back to the table's natural order */
+/* a product name that opens its delivery history reads as a link, not a button */
+.linkish { background: none; border: 0; padding: 0; font: inherit; color: inherit;
+  text-align: left; cursor: pointer; }
+.linkish:hover { text-decoration: underline; color: var(--accent, #e3a71f); }
+th.sortable { cursor: pointer; user-select: none; white-space: nowrap; }
+th.sortable:hover { background: var(--surface-3, rgba(0,0,0,.05)); }
+th.sortable.sorted { color: var(--accent, #e3a71f); }
+.sortarrow { font-size: 10px; opacity: .9; }
 /* a matrix row whose stock has fallen under its reorder level */
 tr.lowrow > td:first-child { box-shadow: inset 3px 0 0 var(--bad, #b02020); font-weight: 600; }
 /* Receivables: money already received reads as settled, so the eye goes to what
