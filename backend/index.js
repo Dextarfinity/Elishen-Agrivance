@@ -247,6 +247,42 @@ async function bootstrapPackSize() {
 }
 bootstrapPackSize().catch((e) => console.error('Pack-size bootstrap failed:', e));
 
+// ---------- term acceptance: who is allowed to buy on credit ----------
+// Selling on term is a credit decision, so it is the admins' to make: a customer
+// may buy on term only once an admin has accepted them, and until then they pay
+// cash. The decision lives on the customer -- a sale looks it up, and not every
+// customer has an information sheet -- while the CIS page and Settings are where
+// admins actually make it. Three states: NULL is "not yet reviewed", which is
+// treated as cash-only, exactly like a refusal, but reads differently on screen.
+// A term is credit unless it is blank or starts with Cash/COD.
+const CREDIT_TERM = (t) => `(${t} IS NOT NULL AND btrim(${t}) <> '' AND ${t} !~* '^(cash|cod)')`;
+async function bootstrapTermApproval() {
+  const { rows: had } = await pool.query(`SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'customers' AND column_name = 'term_approved'`);
+  await pool.query(`ALTER TABLE customers
+    ADD COLUMN IF NOT EXISTS term_approved    boolean,
+    ADD COLUMN IF NOT EXISTS term_approved_by text,
+    ADD COLUMN IF NOT EXISTS term_approved_at timestamptz,
+    ADD COLUMN IF NOT EXISTS term_note        text`);
+  if (had.length) return;                      // already reviewed on this database
+  // First run only: everyone already trading on credit keeps trading on credit.
+  // Switching the rule on must not freeze a live account the owners never asked
+  // to freeze -- only customers who have solely paid cash start out pending.
+  const { rowCount } = await pool.query(`
+    UPDATE customers c
+       SET term_approved = true,
+           term_approved_by = 'carried over — already buying on term',
+           term_approved_at = now()
+     WHERE ${CREDIT_TERM('c.term')}
+        OR EXISTS (SELECT 1 FROM sales s
+                    WHERE UPPER(TRIM(s.customer)) = UPPER(TRIM(c.name))
+                      AND (${CREDIT_TERM('s.term')}
+                           OR COALESCE(s.amount_paid, 0) < COALESCE(s.total, 0)))`);
+  console.log(`[term acceptance] ${rowCount} customer(s) already on term were carried over as `
+    + 'accepted; the rest start as not yet reviewed (cash only).');
+}
+bootstrapTermApproval().catch((e) => console.error('Term-acceptance bootstrap failed:', e));
+
 // ---------- sales billed by URC marketing ----------
 // Goods URC's marketing arm pays for: the stock leaves the shelf and must be
 // deducted, but the money is never Elishen's, so the invoice has to stay out of
@@ -664,6 +700,33 @@ app.get('/api/sales', wrap(async (req, res) => {
   res.json(rows);
 }));
 
+// A sale is on credit if it carries a credit term OR leaves any balance behind --
+// checking the term alone would let a blank term walk an unpaid invoice past the
+// decision. Refused and not-yet-reviewed customers must settle in full.
+function saleIsOnCredit(sale) {
+  const term = String(sale.term ?? '').trim();
+  if (term && !/^(cash|cod)\b/i.test(term)) return true;
+  return (Number(sale.total) || 0) - (Number(sale.amount_paid) || 0) > 0.005;
+}
+async function assertTermAllowed(client, sale) {
+  if (!saleIsOnCredit(sale)) return;
+  const name = String(sale.customer ?? '').trim();
+  if (!name) return;
+  const { rows } = await client.query(
+    'SELECT term_approved FROM customers WHERE UPPER(TRIM(name)) = UPPER(TRIM($1))', [name]);
+  if (!rows.length) {                       // brand-new customer, created by this sale
+    throw { status: 403, message: `"${name}" is a new customer and has not been accepted for `
+      + 'term sales yet. This sale has to be Cash (paid in full), or an admin can accept them '
+      + 'for term on the Customer Information Sheets page first.' };
+  }
+  if (rows[0].term_approved === true) return;
+  throw { status: 403, message: rows[0].term_approved === false
+    ? `"${name}" is not accepted for term sales — this account is cash only. Record the sale as `
+      + 'Cash paid in full, or ask an admin to accept them for term.'
+    : `"${name}" has not been reviewed for term sales yet, so the account is cash only until an `
+      + 'admin accepts them. Record the sale as Cash paid in full, or ask an admin to review them.' };
+}
+
 app.post('/api/sales', wrap(async (req, res) => {
   const { items = [], ...sale } = req.body;
   // non-admin entries wait for an admin's approval before counting as final
@@ -671,6 +734,7 @@ app.post('/api/sales', wrap(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    await assertTermAllowed(client, sale);
     const cols = ['sales_no', 'date', 'customer', 'store_farm', 'term', 'due_date',
       'contact_no', 'payment_mode', 'account_id', 'sales_rep_id', 'subtotal',
       'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'amount_paid', 'status',
@@ -760,6 +824,11 @@ app.put('/api/sales/:id', wrap(async (req, res) => {
     'billed_by_marketing']
     .filter((c) => c in req.body);
   const sets = cols.map((c, i) => `${c} = $${i + 1}`).join(', ');
+  // a partial edit can turn a cash sale into a term one, so judge the sale as it
+  // will read after the change, not as the body alone describes it
+  const { rows: cur } = await q('SELECT * FROM sales WHERE id = $1', [req.params.id]);
+  if (!cur.length) return res.status(404).json({ error: 'not found' });
+  await assertTermAllowed({ query: q }, { ...cur[0], ...req.body });
   const { rows } = await q(
     `UPDATE sales SET ${sets} WHERE id = $${cols.length + 1} RETURNING *`,
     [...cols.map((c) => req.body[c]), req.params.id]);
@@ -783,6 +852,7 @@ app.put('/api/sales/:id/full', wrap(async (req, res) => {
       return res.status(409).json({
         error: 'This invoice was changed by someone else while you were editing. Reopen it to see the latest version.' });
     }
+    await assertTermAllowed(client, sale);
     const cols = ['sales_no', 'date', 'customer', 'store_farm', 'term', 'due_date',
       'contact_no', 'payment_mode', 'account_id', 'sales_rep_id', 'subtotal',
       'tax_pct', 'tax_amount', 'discount_pct', 'discount', 'total', 'status',
@@ -1144,7 +1214,8 @@ app.delete('/api/deliveries/:id', wrap(async (req, res) => {
 app.get('/api/customers', wrap(async (req, res) => {
   const { rows } = await q(`
     SELECT id, name, name AS customer, address, address AS store_farm,
-           contact_no, term, tier, notes
+           contact_no, term, tier, notes,
+           term_approved, term_approved_by, term_approved_at, term_note
     FROM customers ORDER BY UPPER(name)`);
   res.json(rows);
 }));
@@ -1157,21 +1228,101 @@ app.post('/api/customers', wrap(async (req, res) => {
     [name.trim(), address ?? null, contact_no ?? null, term ?? null, tier || 'srp', notes ?? null]);
   res.status(201).json(rows[0]);
 }));
+// Accept or refuse a customer for term sales. Admin-only by omission from
+// NON_ADMIN_ALLOWED, so a rep can never grant credit to their own account.
+// approved: true = may buy on term, false = refused, null = back to not reviewed.
+app.post('/api/customers/:id/term_approval', wrap(async (req, res) => {
+  const { approved, note } = req.body;
+  const state = approved === null || approved === undefined || approved === ''
+    ? null : (approved === true || approved === 'true');
+  const who = (req._auth && req._auth.name) || 'Admin';
+  const { rows } = await q(`
+    UPDATE customers
+       SET term_approved = $2,
+           term_approved_by = CASE WHEN $2::boolean IS NULL THEN NULL ELSE $3 END,
+           term_approved_at = CASE WHEN $2::boolean IS NULL THEN NULL ELSE now() END,
+           term_note = $4
+     WHERE id = $1 RETURNING *`, [req.params.id, state, who, note ?? null]);
+  if (!rows.length) return res.status(404).json({ error: 'not found' });
+  const word = state === true ? 'ACCEPT term' : state === false
+    ? 'REFUSE term' : 'RESET term review';
+  await q('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+    [who, `${word} customer`, `"${rows[0].name}"${note ? ` — ${note}` : ''}`]);
+  res.json(rows[0]);
+}));
+
+// A customer's name is carried as TEXT on their sales, advances, pricing tier and
+// information sheet -- those tables were built to read without a join. Renaming
+// only the customers row therefore orphans the whole history: the invoices keep
+// the old spelling and the receivables split into two customers, one of which no
+// longer exists. So a rename carries the new name across every table that holds
+// it, in one transaction, and reports what it touched.
+const NAME_REFS = [
+  ['sales', 'customer', 'invoices'],
+  ['customer_advances', 'customer', 'advances'],
+  ['customer_tiers', 'customer', 'pricing tiers'],
+  ['customer_info_sheets', 'account_name', 'information sheets'],
+];
 app.put('/api/customers/:id', wrap(async (req, res) => {
   const { name, address, contact_no, term, tier, notes, version } = req.body;
-  const { rows } = await q(`
-    UPDATE customers SET name = COALESCE($2, name), address = $3, contact_no = $4,
-      term = $5, tier = COALESCE($6, tier), notes = $7, version = version + 1
-    WHERE id = $1 AND ($8::int IS NULL OR version = $8::int) RETURNING *`,
-    [req.params.id, name ?? null, address ?? null, contact_no ?? null,
-     term ?? null, tier ?? null, notes ?? null, version ?? null]);
-  if (!rows.length) {
-    const { rows: ex } = await q('SELECT 1 FROM customers WHERE id = $1', [req.params.id]);
-    return res.status(ex.length ? 409 : 404).json({ error: ex.length
-      ? 'This customer was changed by someone else while you were editing. Reopen it to see the latest version.'
-      : 'not found' });
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: before } = await client.query(
+      'SELECT * FROM customers WHERE id = $1 FOR UPDATE', [req.params.id]);
+    if (!before.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'not found' });
+    }
+    if (version != null && Number(before[0].version) !== Number(version)) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error:
+        'This customer was changed by someone else while you were editing. Reopen it to see the latest version.' });
+    }
+    const oldName = before[0].name;
+    const newName = (name == null || String(name).trim() === '') ? oldName : String(name).trim();
+    const renamed = newName.trim().toUpperCase() !== String(oldName).trim().toUpperCase()
+      || newName !== oldName;
+
+    if (renamed) {
+      const { rows: clash } = await client.query(
+        `SELECT id FROM customers WHERE id <> $1 AND UPPER(TRIM(name)) = UPPER(TRIM($2))`,
+        [req.params.id, newName]);
+      if (clash.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ error:
+          `Another customer is already called "${newName}". Merge them by hand rather than giving two records the same name.` });
+      }
+    }
+
+    const { rows } = await client.query(`
+      UPDATE customers SET name = $2, address = $3, contact_no = $4,
+        term = $5, tier = COALESCE($6, tier), notes = $7, version = version + 1
+      WHERE id = $1 RETURNING *`,
+      [req.params.id, newName, address ?? null, contact_no ?? null,
+       term ?? null, tier ?? null, notes ?? null]);
+
+    const carried = {};
+    if (renamed) {
+      for (const [table, col] of NAME_REFS) {
+        const { rowCount } = await client.query(
+          `UPDATE ${table} SET ${col} = $1 WHERE UPPER(TRIM(${col})) = UPPER(TRIM($2))`,
+          [newName, oldName]);
+        if (rowCount) carried[table] = rowCount;
+      }
+      await client.query(
+        'INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+        [req._auth?.name || 'unknown', 'RENAME customer',
+         `"${oldName}" -> "${newName}"; carried to ${JSON.stringify(carried)}`]);
+    }
+    await client.query('COMMIT');
+    res.json({ ...rows[0], renamed_from: renamed ? oldName : null, carried });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
   }
-  res.json(rows[0]);
 }));
 app.delete('/api/customers/:id', wrap(async (req, res) => {
   const { rowCount } = await q('DELETE FROM customers WHERE id = $1', [req.params.id]);
@@ -1207,6 +1358,7 @@ app.get('/api/cis', wrap(async (req, res) => {
     SELECT s.id, s.customer_id, s.sheet_type, s.account_name, s.established_on,
            s.contact_no, s.terms, s.bank_name, s.branch, s.created_by, s.updated_at, s.version,
            c.name AS customer_name,
+           c.term_approved, c.term_approved_by, c.term_approved_at, c.term_note,
            CONCAT_WS(', ', NULLIF(s.addr_no,''), NULLIF(s.addr_street,''), NULLIF(s.addr_purok,''),
                      NULLIF(s.addr_barangay,''), NULLIF(s.addr_town,''), NULLIF(s.addr_city,''),
                      NULLIF(s.addr_province,'')) AS address,

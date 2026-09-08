@@ -8,6 +8,33 @@ const AR_ALL = '__all__';
 window.AR_ALL = AR_ALL;
 const d10 = (v) => (v ? esc(String(v).slice(0, 10)) : '-');
 
+// ---- term acceptance: an admin's decision on whether a customer may buy on credit ----
+// Three states, because "we have not looked at this account yet" is not the same
+// answer as "no" even though both mean cash for now.
+const TERM_OK = (v) => v === true || v === 'true' || v === 't';
+const TERM_NO = (v) => v === false || v === 'false' || v === 'f';
+const termBadge = (v) => (TERM_OK(v)
+  ? '<span class="badge green">Term accepted</span>'
+  : TERM_NO(v) ? '<span class="badge red">Cash only</span>'
+    : '<span class="badge amber">Not yet reviewed</span>');
+// the admin's controls; `id` is the customer id, absent when a sheet is unlinked
+const termButtons = (id, v) => {
+  if (!isAdmin()) return '';
+  if (!id) return '<small style="color:var(--ink-2)">link a customer first</small>';
+  const b = (val, cls, label) => `<button type="button" class="mini ${cls}"
+    data-termset="${id}" data-termval="${val}">${label}</button>`;
+  return `<span class="actions">
+    ${TERM_OK(v) ? '' : b('true', 'add', 'Accept term')}
+    ${TERM_NO(v) ? '' : b('false', 'danger', 'Refuse — cash only')}
+    ${v == null ? '' : b('', '', 'Reset')}
+  </span>`;
+};
+const termWhen = (r) => (r.term_approved_at
+  ? `<small style="color:var(--ink-2)">${new Date(r.term_approved_at).toLocaleDateString()}`
+    + `${r.term_approved_by ? ` · ${esc(r.term_approved_by)}` : ''}`
+    + `${r.term_note ? `<br>${esc(r.term_note)}` : ''}</small>`
+  : '');
+
 // ---- product aliases: the shorthand the warehouse writes on order slips ----
 // "SI 2 (50KG)" instead of "Supremo Infinity 2 - Chick Grower Crumble". Items
 // with no alias (RobiChem and the rest) simply keep showing their full name.
@@ -375,7 +402,7 @@ const views = {
           <label>Term <select name="term_preset" id="termPreset">
             ${presets.map((p) => `<option>${esc(p)}</option>`).join('')}
             <option>Custom…</option>
-          </select></label>
+          </select><small id="termGate"></small></label>
           <label id="customTermWrap" class="hidden">Custom term
             <input name="term" placeholder="e.g. 45 days / special deal"></label>
           <label>Due date (auto from term — editable) <input type="date" name="due_date"></label>
@@ -982,6 +1009,104 @@ const views = {
       })}`;
   },
 
+  // ================= Customers (admin) =================
+  // Renaming a customer is not a cosmetic edit: the name is carried as text on
+  // their invoices, advances, pricing tier and information sheet. The server
+  // carries a new name across all of them in one transaction; this page shows
+  // what each change will touch before it is made.
+  async customers() {
+    const [rows, arCust, sales, advances, cisRows] = await Promise.all([
+      api.get('/api/customers'), api.get('/api/reports/ar_by_customer'),
+      api.get('/api/sales'), api.get('/api/customer_advances'), api.get('/api/cis'),
+    ]);
+    const key = (v) => String(v ?? '').trim().toUpperCase();
+    const balOf = Object.fromEntries((arCust || []).map((c) => [key(c.customer), Number(c.balance) || 0]));
+    const openOf = Object.fromEntries((arCust || []).map((c) => [key(c.customer), Number(c.open_invoices) || 0]));
+    const invCount = {}, lastBuy = {}, spend = {};
+    (sales || []).filter((x) => !String(x.status).toLowerCase().includes('cancel'))
+      .forEach((x) => {
+        const k = key(x.customer);
+        invCount[k] = (invCount[k] || 0) + 1;
+        spend[k] = (spend[k] || 0) + (Number(x.total) || 0);
+        const d = String(x.date).slice(0, 10);
+        if (!lastBuy[k] || d > lastBuy[k]) lastBuy[k] = d;
+      });
+    const advOf = {};
+    (advances || []).forEach((a) => {
+      const k = key(a.customer);
+      advOf[k] = (advOf[k] || 0) + (Number(a.amount) || 0) - (Number(a.applied) || 0);
+    });
+    const sheetOf = new Set((cisRows || []).map((c) => c.customer_id).filter((v) => v != null));
+
+    const enriched = (rows || []).map((c) => ({
+      ...c,
+      invoices: invCount[key(c.name)] || 0,
+      spent: spend[key(c.name)] || 0,
+      balance: balOf[key(c.name)] || 0,
+      open_invoices: openOf[key(c.name)] || 0,
+      last_bought: lastBuy[key(c.name)] || null,
+      advance: advOf[key(c.name)] || 0,
+      has_sheet: sheetOf.has(c.id),
+    }));
+    window._custRows = enriched;
+    const totalOwed = enriched.reduce((a, c) => a + c.balance, 0);
+    const trading = enriched.filter((c) => c.invoices > 0).length;
+    const owing = enriched.filter((c) => c.balance > 0.005).length;
+
+    const TIERS = [{ value: 'srp', label: 'Retail (SRP)' },
+                   { value: 'outright', label: 'Outright dealer' },
+                   { value: 'cod', label: 'COD dealer' }];
+
+    return `<h2>Customers</h2>
+      <p class="empty" style="margin:4px 0 12px">The customer book: names, addresses, terms and
+        pricing tier. <b>Renaming carries the new name across every invoice, advance, pricing tier
+        and information sheet</b> in one step, so a customer's history follows them rather than
+        being left behind under the old spelling.</p>
+
+      <div class="cards" style="margin-bottom:14px">
+        <div class="card"><span>On the books</span><strong>${enriched.length}</strong></div>
+        <div class="card"><span>Have traded</span><strong>${trading}</strong></div>
+        <div class="card ${owing ? 'amber' : 'green'}"><span>Owing now</span><strong>${owing}</strong></div>
+        <div class="card amber"><span>Total outstanding</span><strong>${fmt(totalOwed)}</strong></div>
+      </div>
+
+      ${crudBlock('customers', {
+        title: 'Customer book',
+        endpoint: '/api/customers', rows: enriched,
+        fields: [
+          { name: 'name', label: 'Customer name (renaming carries across their history)', required: true },
+          { name: 'address', label: 'Address / store or farm' },
+          { name: 'contact_no', label: 'Contact number' },
+          { name: 'term', label: 'Usual term (Cash, 15 days, …)' },
+          { name: 'tier', label: 'Pricing tier', type: 'select', options: TIERS },
+          { name: 'notes', label: 'Notes' },
+        ],
+        columns: [
+          { key: 'name', label: 'Customer', render: (r) => `<b>${esc(r.name)}</b>` },
+          { key: 'address', label: 'Address', render: (r) => esc(r.address ?? '') },
+          { key: 'contact_no', label: 'Contact', render: (r) => esc(r.contact_no ?? '') },
+          { key: 'term', label: 'Term', render: (r) => esc(r.term ?? '') },
+          { key: 'term_approved', label: 'Term sales',
+            render: (r) => `${termBadge(r.term_approved)}<br>${termButtons(r.id, r.term_approved)}` },
+          { key: 'tier', label: 'Pricing', render: (r) => r.tier === 'cod'
+              ? '<span class="badge green">COD dealer</span>'
+              : r.tier === 'outright' ? '<span class="badge green">Outright dealer</span>' : 'Retail' },
+          { key: 'invoices', label: 'Invoices', num: 1 },
+          { key: 'spent', label: 'Bought', num: 1, total: 1, render: (r) => fmt(r.spent) },
+          { key: 'balance', label: 'Owing', num: 1, total: 1, render: (r) => r.balance > 0.005
+              ? `<strong style="color:var(--bad)">${fmt(r.balance)}</strong>`
+              : '<small style="color:var(--ink-3)">—</small>' },
+          { key: 'advance', label: 'Advance held', num: 1, total: 1, render: (r) => r.advance > 0.005
+              ? fmt(r.advance) : '<small style="color:var(--ink-3)">—</small>' },
+          { key: 'last_bought', label: 'Last bought', render: (r) => r.last_bought
+              ? d10(r.last_bought) : '<small style="color:var(--ink-3)">never</small>' },
+          { key: '_cis', label: 'Info sheet', render: (r) =>
+              `<button type="button" class="mini" data-cissheet="${r.id}"
+                 data-cisname="${esc(r.name)}">${r.has_sheet ? 'Open sheet' : '+ Create'}</button>` },
+        ],
+      })}`;
+  },
+
   // ================= Customer Information Sheet (every signed-in user) =================
   // The printed form, digitized: one sheet per store or farm account.
   async cis() {
@@ -1000,6 +1125,10 @@ const views = {
       <p class="empty" style="margin:4px 0 12px">The signed customer form, on file and reprintable.
         Fill one out for every <b>store</b> or <b>farm</b> account. Any staff member may create and
         update sheets.</p>
+      <p class="empty" style="margin:-6px 0 12px">The <b>Term sales</b> column is the credit
+        decision, and only an admin can set it. A customer buys on term only once they are
+        accepted here — until then the system will only let their sales be recorded as cash paid
+        in full.</p>
       <div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
         <button type="button" class="primary" data-cisnew="store">+ New store sheet</button>
         <button type="button" class="primary" data-cisnew="farm">+ New farm sheet</button>
@@ -1018,7 +1147,10 @@ const views = {
         { key: 'owner_name', label: 'Owner' },
         { key: 'address', label: 'Address', render: (r) => `<small>${esc(r.address || '')}</small>` },
         { key: 'contact_no', label: 'Contact' },
-        { key: 'terms', label: 'Terms' },
+        { key: 'terms', label: 'Terms asked for' },
+        { key: 'term_approved', label: 'Term sales', render: (r) => (r.customer_id
+          ? `${termBadge(r.term_approved)}${termWhen(r)}<br>${termButtons(r.customer_id, r.term_approved)}`
+          : `<small style="color:var(--ink-2)">sheet not linked to a customer</small>`) },
         { key: 'updated_at', label: 'Updated', render: (r) => `<small>${r.updated_at
             ? new Date(r.updated_at).toLocaleDateString() : ''}${r.created_by
             ? `<br>by ${esc(r.created_by)}` : ''}</small>` },
@@ -3620,9 +3752,9 @@ const views = {
   },
 
   async settings() {
-    const [s, goals, users, audit] = await Promise.all([
+    const [s, goals, users, audit, custs] = await Promise.all([
       api.get('/api/settings'), api.get('/api/profit_goals'), api.get('/api/users'),
-      api.get('/api/audit')]);
+      api.get('/api/audit'), api.get('/api/customers')]);
     return `<h2>Settings</h2>
       <form id="settingsForm" class="form grid3">
         <label>Currency symbol <input name="currency_symbol" value="${esc(s.currency_symbol || '₱')}"></label>
@@ -3671,6 +3803,23 @@ const views = {
           { key: 'achieved', label: 'Achieved', render: (r) => r.achieved ? 'Yes' : 'No' },
         ],
       })}
+      <h3>CIS term acceptance — who may buy on credit</h3>
+      <p class="empty" style="margin:4px 0 10px">The same decision as the <b>Term sales</b> column
+        on the Customer Information Sheets page, gathered here for every customer, whether or not
+        they have a sheet on file. Accepted customers may be invoiced on term; everyone else is
+        cash only, and the system refuses a term or part-paid sale for them.
+        ${(() => { const a = custs.filter((c) => TERM_OK(c.term_approved)).length;
+          const n = custs.filter((c) => TERM_NO(c.term_approved)).length;
+          return `<br><b>${a}</b> accepted · <b>${n}</b> cash only ·
+            <b>${custs.length - a - n}</b> not yet reviewed.`; })()}</p>
+      ${table(custs, [
+        { key: 'name', label: 'Customer', render: (r) => `<b>${esc(r.name)}</b>` },
+        { key: 'term', label: 'Usual term' },
+        { key: 'term_approved', label: 'Term sales', render: (r) => termBadge(r.term_approved) },
+        { key: 'term_approved_at', label: 'Decided', render: (r) => termWhen(r) || '-' },
+        { key: '_a', label: '', render: (r) => termButtons(r.id, r.term_approved) },
+      ])}
+
       <h3>Activity log — every recorded transaction (database-persisted, latest 500)</h3>
       ${table(audit, [
         { key: 'ts', label: 'Date / time', render: (r) => new Date(r.ts).toLocaleString() },

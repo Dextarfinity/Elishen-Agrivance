@@ -4,7 +4,7 @@ window._view = 'dashboard';
 
 // ---- role-based access: Purchases → Settings are admin-only ----5 211111222222223
 const ADMIN_VIEWS = ['matrix', 'urcreport', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
-  'monitoring', 'reports', 'settings'];
+  'monitoring', 'reports', 'settings', 'customers'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
 const OWNER_VIEWS = ['accounts', 'team', 'expenses'];
 const isOwner = () => {
@@ -14,7 +14,7 @@ const isOwner = () => {
 };
 // controls a non-admin never gets: history/money rewrites, pricing, stock, approvals
 const ADMIN_CONTROLS = '[data-editsale],[data-cancel],[data-delsale],[data-editpay],[data-delpay],'
-  + '[data-editorder],[data-deldr],[data-pricing],[data-approve],[data-usertoggle],'
+  + '[data-editorder],[data-deldr],[data-pricing],[data-approve],[data-usertoggle],[data-termset],'
   + '[data-poadd],[data-podel],[data-podelso],[data-ponew],[data-crud-new],[data-crud-edit],[data-crud-del]';
 function applyRbacDom() {
   if (isAdmin()) return;
@@ -497,6 +497,26 @@ function wireSalesActions() {
     show('payments');
   });
   applyRbacDom();   // strip admin-only controls for non-admins on every (re)render
+  // term acceptance — the admin's credit decision, from the CIS page or Settings
+  document.querySelectorAll('[data-termset]').forEach((b) => b.onclick = async () => {
+    const val = b.dataset.termval;                       // 'true' | 'false' | '' (reset)
+    const approved = val === '' ? null : val === 'true';
+    const who = b.closest('tr')?.querySelector('b')?.textContent || 'this customer';
+    if (approved === false && !confirm(`Refuse term sales for ${who}?\n\n`
+      + 'They become cash only: the system will not let a term or part-paid invoice be '
+      + 'recorded for them until they are accepted again.')) return;
+    let note = null;
+    if (approved !== null) {
+      note = prompt(approved ? `Accepting ${who} for term sales.\nReason / credit limit (optional):`
+        : `Refusing term sales for ${who}.\nReason (optional):`, '');
+      if (note === null) return;                          // cancelled the whole action
+    }
+    try {
+      await api.post(`/api/customers/${b.dataset.termset}/term_approval`,
+        { approved, note: note || null });
+      show(window._view);
+    } catch (e) { alert('Error: ' + e.message); }
+  });
   document.querySelectorAll('[data-approve]').forEach((b) => b.onclick = async () => {
     if (!confirm('Approve this sale? It becomes final (Completed).')) return;
     try { await api.put(`/api/sales/${b.dataset.approve}`, { status: 'Completed' }); show(window._view); }
@@ -1329,6 +1349,44 @@ function wire(view) {
     // every line already on the invoice re-prices itself the moment it changes
     // reprice FIRST: a Cash term pre-fills "amount paid" from the running total, so
     // the lines must already carry the COD rate or the counter is handed a stale figure
+    // ---- term acceptance, at the point of sale ----
+    // A customer buys on credit only once an admin has accepted them. Rather than
+    // let a rep fill in a whole invoice and be refused on save, the credit terms
+    // are closed off in the picker itself, with the reason next to them. The
+    // server enforces the same rule -- this is the courtesy, not the control.
+    const custTermState = () => {
+      const name = (document.querySelector('#saleForm [name=customer]')?.value || '').trim();
+      if (!name) return { known: true, approved: true, name };   // nothing chosen yet
+      const c = (window._saleData.customers || []).find((x) =>
+        String(x.customer).trim().toUpperCase() === name.toUpperCase());
+      if (!c) return { known: false, approved: false, name };     // a new customer
+      const v = c.term_approved;
+      return { known: true, approved: v === true || v === 'true' || v === 't',
+        refused: v === false || v === 'false' || v === 'f', name };
+    };
+    const applyTermGate = () => {
+      const st = custTermState();
+      const gate = document.getElementById('termGate');
+      const isCash = (v) => /^(cash|cod)\b/i.test(String(v || '').trim());
+      [...termSel.options].forEach((o) => {
+        o.disabled = !st.approved && !isCash(o.value);
+      });
+      if (!st.approved && !isCash(termSel.value)) {
+        const cash = [...termSel.options].find((o) => isCash(o.value));
+        termSel.value = cash ? cash.value : termSel.options[0].value;
+        document.getElementById('customTermWrap')?.classList.add('hidden');
+        const ct = document.querySelector('#saleForm [name=term]');
+        if (ct) ct.value = '';
+        onTermChange();
+      }
+      if (!gate) return;
+      gate.className = st.approved ? 'checkok' : 'checkbad';
+      gate.innerHTML = st.approved ? '' : (st.known
+        ? `✗ ${esc(st.name)} is ${st.refused ? 'not accepted for term sales — cash only'
+            : 'not yet reviewed for term sales'}. Cash, paid in full.`
+        : `✗ New customer — not accepted for term sales yet. Cash, paid in full.`)
+        + (isAdmin() ? ' <b>Admins:</b> accept them on the Customer Information Sheets page.' : '');
+    };
     const onTermChange = () => { repriceLines(); renderLines(); computeDue(); };
     termSel.onchange = onTermChange;
     document.querySelector('#saleForm [name=term]')?.addEventListener('change', onTermChange);
@@ -1362,6 +1420,8 @@ function wire(view) {
       // <select> in code fires no change event — reprice the lines by hand, or an
       // invoice keeps the wrong rate right up to saving
       onTermChange();
+      // ...and their usual term still only stands if they are accepted for credit
+      applyTermGate();
     };
     const custModal = document.getElementById('custModal');
     const renderCust = (q = '') => {
@@ -1372,6 +1432,7 @@ function wire(view) {
         String(c.store_farm || '').toLowerCase().includes(ql));
       document.getElementById('custList2').innerHTML = rows.length ? `
         <table><thead><tr><th>Customer</th><th>Address / Farm</th><th>Usual term</th>
+          <th>Term sales</th>
           <th>Pricing</th><th style="text-align:right">Outstanding</th><th></th></tr></thead><tbody>
         ${rows.map((c, i) => {
           const bal = arMap[c.customer.trim().toUpperCase()] || 0;
@@ -1381,6 +1442,7 @@ function wire(view) {
             <td><b>${c.customer}</b></td>
             <td>${c.store_farm ?? ''}</td>
             <td>${c.term ?? ''}</td>
+            <td>${termBadge(c.term_approved)}</td>
             <td>${tierLab}</td>
             <td class="num">${bal > 0 ? `<span class="badge amber">${(window._currency || '') + bal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>` : '—'}</td>
             <td><button type="button" class="mini add" data-pickcust="${i}">Select</button></td>
@@ -1404,7 +1466,10 @@ function wire(view) {
       const c = window._saleData.customers.find((x) =>
         x.customer.trim().toUpperCase() === e.target.value.trim().toUpperCase());
       if (c) applyCustomer(c);
+      else applyTermGate();      // a name typed in fresh is a new, unaccepted customer
     });
+    document.querySelector('[name=customer]').addEventListener('input', applyTermGate);
+    applyTermGate();             // and on a blank form, before anyone is chosen
 
     // ---- live uniqueness checks (values stay hand-typed) ----
     const uniqueCheck = (input, endpoint, out) => {
