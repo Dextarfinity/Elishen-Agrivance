@@ -329,6 +329,19 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
 /* every column heading is a sort control: one click ascending, again to reverse,
    a third to drop back to the table's natural order */
 /* a product name that opens its delivery history reads as a link, not a button */
+/* the standing reminder that money is waiting to be collected */
+.duebar { position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: max(14px, env(safe-area-inset-bottom)); z-index: 880;
+  display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+  max-width: min(94vw, 720px); padding: 11px 14px; border-radius: 12px;
+  background: #fdf6e3; border: 1px solid #e8d9a8; border-left: 4px solid #e3a71f;
+  box-shadow: 0 8px 26px rgba(0,0,0,.22); font-size: 13px; color: #1c1c1c; }
+.duebar.overdue { background: #fdeaea; border-color: #e8b4b4; border-left-color: #b02020; }
+.duebar span { flex: 1; min-width: 200px; }
+@media print { .duebar { display: none !important; } }
+/* the TOTAL line on a printed table reads as the bottom line, not another row */
+tr.totalrow > td { border-top: 2px solid #111; font-weight: 700; }
+@media print { tr.totalrow > td { border-top: 2px solid #000; } }
 .linkish { background: none; border: 0; padding: 0; font: inherit; color: inherit;
   text-align: left; cursor: pointer; }
 .linkish:hover { text-decoration: underline; color: var(--accent, #e3a71f); }

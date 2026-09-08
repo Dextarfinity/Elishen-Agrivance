@@ -3117,10 +3117,77 @@ document.addEventListener('submit', (e) => {
       localStorage.setItem('ea_last_pushed', String(Math.max(...fresh.map((n) => n.id))));
     } catch {}
   };
+  // ---- money that is due: a standing reminder, not a one-off ----
+  // The bell above fires each event once and then lets it go, which is right for
+  // "Romel encoded a sale". Money owed is different: it stays true until it is
+  // collected, so this fires on every launch, and again if the app is left open
+  // across midnight and something new falls due.
+  let dueShownFor = null;
+  const dueAlert = async () => {
+    if (!window._user) return;
+    const today = new Date().toLocaleDateString('en-CA');
+    if (dueShownFor === today) return;              // once per launch, per day
+    let open;
+    try { open = await api.get('/api/reports/accounts_receivable'); } catch { return; }
+    dueShownFor = today;
+    const state = (r) => {
+      const d = String(r.due_date || r.date || '').slice(0, 10);
+      return !d ? 'notyet' : d < today ? 'overdue' : d === today ? 'due' : 'notyet';
+    };
+    const overdue = (open || []).filter((r) => state(r) === 'overdue');
+    const dueNow = (open || []).filter((r) => state(r) === 'due');
+    if (!overdue.length && !dueNow.length) return;
+    const money = (n) => '₱' + Number(n || 0).toLocaleString(undefined,
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const sum = (l) => l.reduce((a2, r) => a2 + (Number(r.balance) || 0), 0);
+    const parts = [];
+    if (dueNow.length) parts.push(`${dueNow.length} invoice(s) due today, ${money(sum(dueNow))}`);
+    if (overdue.length) parts.push(`${overdue.length} overdue, ${money(sum(overdue))}`);
+    const line = parts.join(' · ');
+
+    // on screen: a bar that stays until it is dismissed, and returns next launch
+    document.getElementById('dueBar')?.remove();
+    const bar = document.createElement('div');
+    bar.id = 'dueBar';
+    bar.className = 'duebar' + (overdue.length ? ' overdue' : '');
+    bar.innerHTML = `<span><b>To collect:</b> ${line}</span>
+      <button type="button" class="mini" id="dueGo">Open Receivables</button>
+      <button type="button" class="mini" id="dueHide" title="Hide until next time">Dismiss</button>`;
+    document.body.appendChild(bar);
+    document.getElementById('dueGo').onclick = () => {
+      window._arDue = overdue.length ? 'overdue' : 'due';
+      bar.remove();
+      show('receivables');
+    };
+    document.getElementById('dueHide').onclick = () => bar.remove();
+
+    // on the phone: a real notification, with its own id so it never collides
+    // with the event notifications above
+    try {
+      if (window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform()) {
+        const LN = Capacitor.Plugins.LocalNotifications;
+        if (LN) {
+          const perm = await LN.checkPermissions();
+          if (perm.display === 'granted'
+              || (await LN.requestPermissions()).display === 'granted') {
+            await LN.schedule({ notifications: [{
+              id: 990001,
+              title: overdue.length ? 'Collections overdue' : 'Due for collection today',
+              body: line,
+              schedule: { at: new Date(Date.now() + 800) },
+            }] });
+          }
+        }
+      }
+    } catch {}
+  };
+  window._dueAlert = dueAlert;
+
   window._notifPoll = async () => {
     if (!window._user) { renderBell(); return; }
     try { cache = await api.get('/api/notifications'); pushNative(); } catch {}
     renderBell();
+    dueAlert();
   };
   bell.onclick = async (e) => {
     e.stopPropagation();

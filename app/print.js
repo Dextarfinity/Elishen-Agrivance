@@ -792,7 +792,25 @@ async function printSOA(customerName) {
         <td class="num">${PD(buckets.b60)}</td><td class="num">${PD(buckets.b90)}</td>
         <td class="num"><b>${PD(totalDue)}</b></td></tr></tbody></table>
     <div class="note">Please make payments to ELISHEN AGRIVANCE and request an Official Receipt.
-      Kindly disregard amounts already paid but not yet reflected. Generated ${new Date().toLocaleString()}.</div>`);
+      Kindly disregard amounts already paid but not yet reflected. Generated ${new Date().toLocaleString()}.</div>
+    <div class="recvblock">
+      <div class="recvby">
+        <div class="recvlabel">Date: <span class="recvfill"></span></div>
+        <div class="recvlabel recvack">Received and acknowledged by:</div>
+        <div class="recvline"></div>
+        <div class="recvcaption">Signature over printed name / position</div>
+      </div>
+    </div>`,
+    // Bottom right, and kept whole: a statement is handed over and signed, so the
+    // acknowledgement must never be orphaned onto a page of its own.
+    `.recvblock { display: flex; justify-content: flex-end; margin-top: 46px;
+       page-break-inside: avoid; }
+     .recvby { width: 340px; }
+     .recvlabel { font-size: 12px; margin-bottom: 6px; }
+     .recvfill { display: inline-block; width: 210px; border-bottom: 1px solid #111; }
+     .recvack { margin-top: 14px; margin-bottom: 34px; font-weight: 700; }
+     .recvline { border-bottom: 1px solid #111; height: 0; }
+     .recvcaption { font-size: 10.5px; color: #444; margin-top: 5px; text-align: center; }`);
   openPrintPreview(html, `SOA_${customerName.replace(/[^\w\- ]+/g, '').replace(/\s+/g, '_')}`);
 }
 

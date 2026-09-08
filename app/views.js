@@ -29,7 +29,33 @@ window.itemLabelHtml = itemLabelHtml;
 window._pg = window._pg || {};        // per-table pagination state (survives refreshes)
 window._tblCache = {};                // rows/cols per table key, for repaging + print
 
-function tableInnerHTML(rows, cols, sortKey, sortDir, tblKey) {
+// Columns marked `total: 1` are summed into a TOTAL row. Only printed copies get
+// it: on screen the table is paginated, so a total there would quietly describe
+// the current page rather than the report, which is worse than none at all.
+function totalsRowHTML(rows, cols) {
+  if (!cols.some((c) => c.total)) return '';
+  const num = (v) => {
+    const t = String(v).replace(/[,\s₱$]/g, '').trim();
+    if (t === '' || !/^-?\d*\.?\d+$/.test(t)) return null;
+    const n = Number(t);
+    return Number.isFinite(n) ? n : null;
+  };
+  const cells = cols.map((c, ix) => {
+    if (!c.total) return `<td class="${c.num ? 'num' : ''}">${ix === 0 ? '<b>TOTAL</b>' : ''}</td>`;
+    let sum = 0;
+    rows.forEach((r) => {
+      // the rendered cell is the source of truth: it is what the reader is adding up
+      const raw = c.render ? (_stripDiv.innerHTML = String(c.render(r)), _stripDiv.textContent)
+        : r[c.key];
+      const n = num(raw);
+      if (n != null) sum += n;
+    });
+    return `<td class="num"><b>${fmt(sum)}</b></td>`;
+  }).join('');
+  return `<tr class="totalrow">${cells}</tr>`;
+}
+
+function tableInnerHTML(rows, cols, sortKey, sortDir, tblKey, withTotals) {
   // A header is a sort control when the table is a live one on screen. Printed
   // copies pass no key, so they render as plain headings.
   const head = cols.map((c, ix) => {
@@ -44,10 +70,11 @@ function tableInnerHTML(rows, cols, sortKey, sortDir, tblKey) {
     <thead><tr>${head}</tr></thead>
     <tbody>${rows.map((r) => `<tr>${cols.map((c) =>
       `<td class="${c.num ? 'num' : ''}">${c.render ? c.render(r) : esc(r[c.key])}</td>`).join('')}</tr>`).join('')}
+    ${withTotals ? totalsRowHTML(rows, cols) : ''}
     </tbody></table>`;
 }
 // full, unpaginated table (used by print/PDF so reports always carry every row)
-window.fullTableHTML = (rows, cols) => tableInnerHTML(rows, cols);
+window.fullTableHTML = (rows, cols) => tableInnerHTML(rows, cols, null, null, null, true);
 
 // Sort a column the way a reader expects: numbers as numbers, dates as dates,
 // text case-insensitively, and blanks last whichever way the arrow points, so
@@ -237,7 +264,7 @@ const views = {
           ${table(rangeData.income_by_category, [
             { key: 'category', label: 'Category' },
             { key: 'sales', label: 'Sales', num: 1 },
-            { key: 'total', label: 'Total', num: 1, render: (r) => fmt(r.total) },
+            { key: 'total', label: 'Total', num: 1, total: 1, render: (r) => fmt(r.total) },
           ])}
           <h3>Income by item ${scope}</h3>${table(rangeData.income_by_item, [
             { key: 'name', label: 'Item' },
@@ -252,7 +279,7 @@ const views = {
             { key: 'category', label: 'Category' },
             { key: 'net', label: 'Net expense', num: 1, render: (r) => fmt(r.net) },
             { key: 'tax', label: 'Tax', num: 1, render: (r) => fmt(r.tax) },
-            { key: 'total', label: 'Total', num: 1, render: (r) => fmt(r.total) },
+            { key: 'total', label: 'Total', num: 1, total: 1, render: (r) => fmt(r.total) },
           ])}
         </div>
       </div>`;
@@ -485,7 +512,7 @@ const views = {
         { key: 'or_no', label: 'OR No.', render: (r) => esc(r.or_no ?? '-') },
         { key: 'sales_no', label: 'Invoice #' },
         { key: 'customer', label: 'Customer' },
-        { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+        { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
         { key: 'account', label: 'Account', render: (r) => esc(r.account ?? '-') },
         { key: 'cheque_status', label: 'Cheque', render: (r) => r.cheque_status
             ? `<span class="badge ${r.cheque_status === 'Good' ? 'green'
@@ -546,9 +573,9 @@ const views = {
       { key: 'customer', label: 'Customer' },
       { key: 'items', label: 'Items', render: (r) => esc(r.items
           .map((i) => `${aliasOf(i) || i.item}×${Number(i.qty)}`).join(', ')) },
-      { key: 'total', label: 'Total', num: 1, render: (r) => fmt(r.total) },
-      { key: 'amount_paid', label: 'Paid', num: 1, render: (r) => fmt(r.amount_paid) },
-      { key: 'balance', label: 'Balance', num: 1, render: (r) => fmt(r.total - r.amount_paid) },
+      { key: 'total', label: 'Total', num: 1, total: 1, render: (r) => fmt(r.total) },
+      { key: 'amount_paid', label: 'Paid', num: 1, total: 1, render: (r) => fmt(r.amount_paid) },
+      { key: 'balance', label: 'Balance', num: 1, total: 1, render: (r) => fmt(r.total - r.amount_paid) },
       { key: 'status', label: 'Status', render: (r) =>
           r.status?.toLowerCase().includes('cancel') ? `<span class="badge red">${esc(r.status)}</span>`
           : r.status === 'Pending approval' ? `<span class="badge amber">${esc(r.status)}</span>`
@@ -692,7 +719,7 @@ const views = {
         { key: 'sales_no', label: 'Invoice #' },
         { key: 'customer', label: 'Customer' },
         { key: 'store_farm', label: 'Stores/Farms' },
-        { key: 'total', label: 'Amount', num: 1, render: (r) => fmt(r.total) },
+        { key: 'total', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.total) },
         { key: 'delivered_by', label: 'Delivered by', render: (r) => esc(r.delivered_by ?? '') },
         { key: 'status', label: 'Status', render: (r) =>
             `<span class="badge ${r.status === 'Delivered' ? 'green' : 'amber'}">${esc(r.status)}</span>`
@@ -847,12 +874,12 @@ const views = {
         { key: 'term', label: 'Term', render: (l) => l.first ? esc(l.s.term ?? '') : '' },
         { key: 'mode', label: 'Payment', render: (l) => l.first ? esc(l.s.payment_mode ?? '') : '' },
         ...(showItems ? itemCols : []),
-        { key: 'total', label: 'Invoice total', num: 1, render: (l) => l.first ? fmt(l.s.total) : '' },
+        { key: 'total', label: 'Invoice total', num: 1, total: 1, render: (l) => l.first ? fmt(l.s.total) : '' },
         // what has already been received (cleared payments only -- a held or
         // bounced cheque is not money yet), shown so the gap to "To pay" is plain
-        { key: 'paid', label: 'Already paid', num: 1, render: (l) => !l.first ? ''
+        { key: 'paid', label: 'Already paid', num: 1, total: 1, render: (l) => !l.first ? ''
             : (Number(l.s.amount_paid) ? `<span class="paidcell">${fmt(l.s.amount_paid)}</span>` : '—') },
-        { key: 'bal', label: 'To pay', num: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
+        { key: 'bal', label: 'To pay', num: 1, total: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
         { key: 'due', label: 'Days overdue', num: 1, render: (l) => {
             if (!l.first) return '';
             const d = Math.max(0, Math.floor((Date.now() - new Date(l.s.due_date || l.s.date)) / 86400000));
@@ -914,7 +941,7 @@ const views = {
         columns: [
           { key: 'date', label: 'Date', render: (r) => d10(r.date) },
           { key: 'customer', label: 'Customer' },
-          { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+          { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
           { key: 'applied', label: 'Applied', num: 1, render: (r) => fmt(r.applied) },
           { key: '_rem', label: 'Remaining', num: 1, render: (r) => {
               const rem = Number(r.amount) - Number(r.applied);
@@ -1209,7 +1236,7 @@ const views = {
           { key: 'minimum_stock', label: 'Min', num: 1 },
           { key: 'cost', label: 'Capital', num: 1, render: (r) => fmt(r.cost) },
           { key: 'sales_price', label: 'SRP', num: 1, render: (r) => fmt(r.sales_price) },
-          { key: '_pb', label: 'Profit/bag', num: 1, render: (r) =>
+          { key: '_pb', label: 'Profit/bag', num: 1, total: 1, render: (r) =>
               (r.sales_price != null && r.cost != null)
                 ? `<strong>${fmt(r.sales_price - r.cost)}</strong>` : '-' },
           { key: '_mg', label: 'Margin', num: 1, render: (r) => {
@@ -1372,7 +1399,7 @@ const views = {
         { key: 'short', label: 'Short', num: 1, render: (r) => Math.abs(r.short) > 0.001
             ? `<span class="badge red">${Number(r.short).toLocaleString()}</span>`
             : '<small style="color:var(--ink-3)">—</small>' },
-        { key: 'cost', label: 'Cost', num: 1, render: (r) => fmt(r.cost) },
+        { key: 'cost', label: 'Cost', num: 1, total: 1, render: (r) => fmt(r.cost) },
       ])}` : '';
 
     // the most recent receipt, so the sheet says when this last came in
@@ -1580,7 +1607,7 @@ const views = {
           { key: 'purchase_qty', label: 'Qty', num: 1 },
           { key: 'received_qty', label: 'Recv', num: 1 },
           { key: 'unit_cost', label: 'Unit cost', num: 1, render: (r) => fmt(r.unit_cost) },
-          { key: '_tc', label: 'Total', num: 1, render: (r) => fmt(r.purchase_qty * r.unit_cost) },
+          { key: '_tc', label: 'Total', num: 1, total: 1, render: (r) => fmt(r.purchase_qty * r.unit_cost) },
           { key: 'vendor_id', label: 'Vendor', render: (r) => esc(vendMap[r.vendor_id] ?? '') },
           { key: 'status', label: 'Status' },
           { key: '_recv', label: '', render: (r) =>
@@ -1608,7 +1635,7 @@ const views = {
       <h3>Vendor performance</h3>
       ${table(perf, [
         { key: 'name', label: 'Vendor' }, { key: 'orders', label: 'Orders', num: 1 },
-        { key: 'total_spent', label: 'Total spent', num: 1, render: (r) => fmt(r.total_spent) },
+        { key: 'total_spent', label: 'Total spent', num: 1, total: 1, render: (r) => fmt(r.total_spent) },
         { key: 'avg_shipping_days', label: 'Avg ship days', num: 1 },
       ])}`;
   },
@@ -1636,7 +1663,7 @@ const views = {
         columns: [
           { key: 'name', label: 'Name' },
           { key: 'category', label: 'Category' },
-          { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+          { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
           { key: 'day_of_month', label: 'Day', num: 1 },
           { key: 'account_id', label: 'Account', render: (r) => esc(acctMap[r.account_id] ?? '') },
           { key: 'active', label: 'Active', render: (r) => r.active ? 'Yes' : 'No' },
@@ -1661,7 +1688,7 @@ const views = {
         columns: [
           { key: 'date', label: 'Date', render: (r) => d10(r.date) },
           { key: 'category', label: 'Category' },
-          { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+          { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
           { key: 'tax', label: 'Tax', num: 1, render: (r) => fmt(r.tax) },
           { key: 'shipping', label: 'Shipping', num: 1, render: (r) => fmt(r.shipping) },
           { key: 'fees', label: 'Fees', num: 1, render: (r) => fmt(r.fees) },
@@ -1734,7 +1761,7 @@ const views = {
         columns: [
           { key: 'date', label: 'Date', render: (r) => d10(r.date) },
           { key: 'account_id', label: 'Account', render: (r) => esc(acctMap[r.account_id] ?? '') },
-          { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+          { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
           { key: 'description', label: 'Description' },
         ],
       })}`;
@@ -2288,7 +2315,7 @@ const views = {
         { key: 'period_from', label: 'Period', render: (r) =>
             `${d10(r.period_from) || '…'} → ${d10(r.period_to) || '…'}` },
         { key: 'qty', label: 'Qty', num: 1 },
-        { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+        { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
         { key: 'status', label: 'Status', render: (r) => claimBadge(r.status) },
         { key: 'filed_date', label: 'Filed', render: (r) => d10(r.filed_date) },
         { key: 'credited_date', label: 'Credited', render: (r) => d10(r.credited_date) },
@@ -2484,7 +2511,7 @@ const views = {
       { key: 'rate', label: 'Rate per sack', num: 1, render: (r) => fmt(r.rate) },
       { key: 'qty', label: 'Sacks', num: 1, render: (r) => Number(r.qty).toLocaleString() },
       { key: 'products', label: 'Products', num: 1 },
-      { key: 'amount', label: 'Amount', num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+      { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
     ]) + `<p class="artotals"><b>Total: ${fmt(total)}</b></p>`
       : '<p class="empty">Nothing in this period carries these figures.</p>';
 
@@ -2918,9 +2945,9 @@ const views = {
         { key: 'stocked', label: 'Products with stock', num: 1,
           render: (r) => `${r.stocked} <small style="color:var(--ink-2)">of ${r.products}</small>` },
         { key: 'units', label: 'Units on hand', num: 1, render: (r) => Number(r.units).toLocaleString() },
-        { key: 'capital', label: 'Capital', num: 1, render: (r) => fmt(r.capital) },
-        { key: 'retail', label: 'Retail value', num: 1, render: (r) => `<strong>${fmt(r.retail)}</strong>` },
-        { key: 'margin', label: 'Profit on shelf', num: 1, render: (r) => fmt(r.retail - r.capital) },
+        { key: 'capital', label: 'Capital', num: 1, total: 1, render: (r) => fmt(r.capital) },
+        { key: 'retail', label: 'Retail value', num: 1, total: 1, render: (r) => `<strong>${fmt(r.retail)}</strong>` },
+        { key: 'margin', label: 'Profit on shelf', num: 1, total: 1, render: (r) => fmt(r.retail - r.capital) },
         { key: 'out', label: 'Out', num: 1, render: (r) => r.out
             ? `<span class="badge red">${r.out}</span>` : '—' },
         { key: 'low', label: 'Low', num: 1, render: (r) => r.low
@@ -2947,9 +2974,9 @@ const views = {
         { key: 'pack_size', label: 'Per box', num: 1, render: (r) => Number(r.pack_size)
             ? Number(r.pack_size) : '<small style="color:var(--ink-3)">—</small>' },
         { key: 'cost', label: 'Capital each', num: 1, render: (r) => fmt(r.cost) },
-        { key: 'capital', label: 'Capital held', num: 1, render: (r) => fmt(r.capital) },
+        { key: 'capital', label: 'Capital held', num: 1, total: 1, render: (r) => fmt(r.capital) },
         { key: 'sales_price', label: 'Price each', num: 1, render: (r) => fmt(r.sales_price) },
-        { key: 'retail', label: 'Retail value', num: 1, render: (r) => fmt(r.retail) },
+        { key: 'retail', label: 'Retail value', num: 1, total: 1, render: (r) => fmt(r.retail) },
         { key: 'status', label: 'Status', render: (r) => statusBadge(r.status) },
       ])}`;
 
@@ -2975,7 +3002,7 @@ const views = {
         { key: 'total_deposits', label: 'Deposits', num: 1, render: (r) => fmt(r.total_deposits) },
         { key: 'total_withdrawals', label: 'Withdrawals', num: 1, render: (r) => fmt(r.total_withdrawals) },
         { key: 'balance_adjustments', label: 'Adjustments', num: 1, render: (r) => fmt(r.balance_adjustments) },
-        { key: 'current_balance', label: 'Balance', num: 1,
+        { key: 'current_balance', label: 'Balance', num: 1, total: 1,
           render: (r) => `<strong>${fmt(r.current_balance)}</strong>` },
       ])}`;
 
@@ -3018,20 +3045,20 @@ const views = {
       ${table(payMonthRows, [
         { key: 'month', label: 'Month', render: (r) => `<b>${esc(r.month)}</b>` },
         { key: 'count', label: 'Payments', num: 1 },
-        { key: 'amount', label: 'Collected', num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+        { key: 'amount', label: 'Collected', num: 1, total: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
       ])}
       <h4 style="margin:12px 0 4px">By account</h4>
       ${table(payAcctRows, [
         { key: 'account', label: 'Paid into', render: (r) => `<b>${esc(r.account)}</b>` },
         { key: 'count', label: 'Payments', num: 1 },
-        { key: 'amount', label: 'Collected', num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+        { key: 'amount', label: 'Collected', num: 1, total: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
       ])}
       ${chequeRows.length ? `<h4 style="margin:12px 0 4px">Cheques</h4>
       ${table(chequeRows, [
         { key: 'status', label: 'Status', render: (r) => `<span class="badge ${
             r.status === 'Good' ? 'green' : r.status === 'Bounced' ? 'red' : 'amber'}">${esc(r.status)}</span>` },
         { key: 'count', label: 'Cheques', num: 1 },
-        { key: 'amount', label: 'Amount', num: 1, render: (r) => fmt(r.amount) },
+        { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
       ])}` : ''}`;
 
     // ---- receivables: the aging that the Receivables page shows, summarised ----
@@ -3078,7 +3105,7 @@ const views = {
         { key: 'customer', label: 'Customer' },
         { key: 'store_farm', label: 'Stores/Farms', render: (r) => esc(r.store_farm ?? '') },
         { key: 'delivered_by', label: 'Delivered by', render: (r) => esc(r.delivered_by ?? '') },
-        { key: 'total', label: 'Invoice value', num: 1, render: (r) => fmt(r.total) },
+        { key: 'total', label: 'Invoice value', num: 1, total: 1, render: (r) => fmt(r.total) },
       ]) : '<p class="empty">Every delivery receipt has been signed for.</p>'}`;
 
     // ---- purchases: what was bought, and from whom ----
@@ -3103,13 +3130,13 @@ const views = {
         { key: 'month', label: 'Month', render: (r) => `<b>${esc(r.month)}</b>` },
         { key: 'lines', label: 'Lines', num: 1 },
         { key: 'qty', label: 'Units', num: 1, render: (r) => Number(r.qty).toLocaleString() },
-        { key: 'cost', label: 'Cost', num: 1, render: (r) => `<strong>${fmt(r.cost)}</strong>` },
+        { key: 'cost', label: 'Cost', num: 1, total: 1, render: (r) => `<strong>${fmt(r.cost)}</strong>` },
       ])}
       <h4 style="margin:12px 0 4px">By supplier</h4>
       ${table(vendors, [
         { key: 'name', label: 'Supplier', render: (r) => `<b>${esc(r.name)}</b>` },
         { key: 'orders', label: 'Order lines', num: 1 },
-        { key: 'total_spent', label: 'Total spent', num: 1,
+        { key: 'total_spent', label: 'Total spent', num: 1, total: 1,
           render: (r) => `<strong>${fmt(r.total_spent)}</strong>` },
         { key: 'avg_shipping_days', label: 'Avg days to arrive', num: 1 },
       ])}`;
@@ -3195,13 +3222,13 @@ const views = {
         { key: 'mo', label: 'Month', render: (r) => `<b>${esc(r.mo)}</b>` },
         { key: 'orders', label: 'Sales orders', num: 1 },
         { key: 'units', label: 'Units bought', num: 1, render: (r) => Number(r.units).toLocaleString() },
-        { key: 'amount', label: esc(fundLabel), num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+        { key: 'amount', label: esc(fundLabel), num: 1, total: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
       ])}
       <h4 style="margin:12px 0 4px">By category</h4>
       ${table(fCatRows, [
         { key: 'cat', label: 'Category', render: (r) => `<b>${esc(r.cat)}</b>` },
         { key: 'units', label: 'Units', num: 1, render: (r) => Number(r.units).toLocaleString() },
-        { key: 'amount', label: esc(fundLabel), num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+        { key: 'amount', label: esc(fundLabel), num: 1, total: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
       ])}
       <h4 style="margin:12px 0 4px">By product <small style="font-weight:400;color:var(--ink-2)">— the working</small></h4>
       ${table(fProdRows, [
@@ -3209,7 +3236,7 @@ const views = {
         { key: 'cat', label: 'Category', render: (r) => esc(r.cat) },
         { key: 'rate', label: 'Rate per unit', num: 1, render: (r) => fmt(r.rate) },
         { key: 'units', label: 'Units bought', num: 1, render: (r) => Number(r.units).toLocaleString() },
-        { key: 'amount', label: esc(fundLabel), num: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
+        { key: 'amount', label: esc(fundLabel), num: 1, total: 1, render: (r) => `<strong>${fmt(r.amount)}</strong>` },
       ])}
       <p class="artotals">${fProdRows.length} product(s) &middot; ${Number(fUnits).toLocaleString()} units
         &middot; <b>${esc(fundLabel)}: ${fmt(fTotal)}</b></p>`
@@ -3291,8 +3318,8 @@ const views = {
       ${custRows.length ? table(custRows, [
         { key: 'customer', label: 'Customer', render: (r) => `<b>${esc(r.customer)}</b>` },
         { key: 'invoices', label: 'Invoices', num: 1 },
-        { key: 'revenue', label: 'Bought', num: 1, render: (r) => `<strong>${fmt(r.revenue)}</strong>` },
-        { key: 'paid', label: 'Paid', num: 1, render: (r) => fmt(r.paid) },
+        { key: 'revenue', label: 'Bought', num: 1, total: 1, render: (r) => `<strong>${fmt(r.revenue)}</strong>` },
+        { key: 'paid', label: 'Paid', num: 1, total: 1, render: (r) => fmt(r.paid) },
         { key: 'owing', label: 'Still owing', num: 1, render: (r) => (r.revenue - r.paid) > 0
             ? `<strong style="color:var(--bad)">${fmt(r.revenue - r.paid)}</strong>` : '—' },
       ]) : '<p class="empty">No sales recorded yet.</p>'}`;
@@ -3359,9 +3386,9 @@ const views = {
         { key: 'units', label: 'Units sold', num: 1, render: (r) => Number(r.units).toLocaleString() },
         { key: 'free', label: 'Of which free', num: 1, render: (r) => r.free
             ? `<span class="badge green">${Number(r.free).toLocaleString()}</span>` : '—' },
-        { key: 'revenue', label: 'Revenue', num: 1, render: (r) => `<strong>${fmt(r.revenue)}</strong>` },
-        { key: 'capital', label: 'Capital sold', num: 1, render: (r) => fmt(r.capital) },
-        { key: 'profit', label: 'Gross profit', num: 1, render: (r) => fmt(r.revenue - r.capital) },
+        { key: 'revenue', label: 'Revenue', num: 1, total: 1, render: (r) => `<strong>${fmt(r.revenue)}</strong>` },
+        { key: 'capital', label: 'Capital sold', num: 1, total: 1, render: (r) => fmt(r.capital) },
+        { key: 'profit', label: 'Gross profit', num: 1, total: 1, render: (r) => fmt(r.revenue - r.capital) },
       ])}
       <p class="artotals">revenue ${fmt(sTotal)} &middot; capital ${fmt(sCap)}
         &middot; <b>gross profit: ${fmt(sTotal - sCap)}</b></p>` : '';
@@ -3382,7 +3409,7 @@ const views = {
       <h4 style="margin:10px 0 4px">By customer</h4>${table(ar, [
         { key: 'customer', label: 'Customer' },
         { key: 'open_invoices', label: 'Open invoices', num: 1 },
-        { key: 'balance', label: 'Balance', num: 1, render: (r) => fmt(r.balance) },
+        { key: 'balance', label: 'Balance', num: 1, total: 1, render: (r) => fmt(r.balance) },
         { key: 'max_days_overdue', label: 'Days overdue', num: 1 },
       ])}
       <h3>Sales tax tracker —
