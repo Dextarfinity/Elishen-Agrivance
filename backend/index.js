@@ -283,6 +283,139 @@ async function bootstrapTermApproval() {
 }
 bootstrapTermApproval().catch((e) => console.error('Term-acceptance bootstrap failed:', e));
 
+// ---------- e-signatures on the other lines of a document ----------
+// The customer's signature on a DR has always lived on the delivery itself. Every
+// other signing line -- who issued, checked and drove a DR; a payslip's employee
+// and approver; the Prepared / Checked / Approved under a printed report; a
+// statement's acknowledgement; a DTR's employee and approver -- is one row here,
+// keyed by the document it belongs to (DOC_SIGN says what the key is).
+async function bootstrapDocSignatures() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS doc_signatures (
+      id         serial PRIMARY KEY,
+      doc_type   text    NOT NULL,              -- DR | PAYSLIP | SOA | REPORT | DTR
+      doc_key    text    NOT NULL,              -- the record's id, or the snapshot's name
+      role       text    NOT NULL,              -- which line on the document
+      name       text,                          -- the printed name under the ink
+      signature  text    NOT NULL,              -- transparent PNG, as a data URL
+      signed_by  text,                          -- the account that captured it
+      signed_at  timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (doc_type, doc_key, role)
+    )`);
+}
+bootstrapDocSignatures().catch((e) => console.error('Doc-signature bootstrap failed:', e));
+
+// ---------- the names a signer can be picked from ----------
+// Customers are on the books by store or farm, not by the person who signs for
+// one. Names added by hand from the signature pad are kept here, against the
+// customer they sign for, so every device offers them next time.
+async function bootstrapSignerNames() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS signer_names (
+      id         serial PRIMARY KEY,
+      kind       text NOT NULL CHECK (kind IN ('staff', 'customer')),
+      name       text NOT NULL,
+      customer   text,                          -- the store/farm they sign for
+      created_by text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )`);
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS signer_names_ux ON signer_names
+    (kind, UPPER(TRIM(name)), UPPER(TRIM(COALESCE(customer, ''))))`);
+}
+bootstrapSignerNames().catch((e) => console.error('Signer-name bootstrap failed:', e));
+
+// ---------- price history: an item's whole price structure, dated ----------
+// URC re-prices every month or so -- the SRP and capital, the dealer rates and
+// per-bag discounts, the ex-plant price and every purchase discount, and the
+// whole build-up (distributor income, both freight legs, the funds, the
+// incentives). Like a stock take, but for prices: each change is one dated entry
+// holding all of it, in force from its start date until the next one. `items`
+// stays the price in force today, which every page reads; an entry set ahead
+// takes over on its start date; any edit made to an item, from any page, is kept
+// as an entry starting today. Sales, orders and the fund reports then work each
+// line out on the prices in force on its own date, so a new price never rewrites
+// what the old one earned.
+const PRICE_FIELDS = ['sales_price', 'cost', 'deal', 'promotion', 'outright_rate', 'cod_rate',
+  'cod_discount', 'term_discount', 'price_breakdown'];
+const PRICE_NUMERIC = ['sales_price', 'cost', 'outright_rate', 'cod_rate', 'cod_discount', 'term_discount'];
+const snapSql = (a) => `jsonb_build_object(${PRICE_FIELDS.map((f) => `'${f}', ${a}.${f}`).join(', ')})`;
+const TODAY_SQL = `(now() AT TIME ZONE 'Asia/Manila')::date`;
+const todayPH = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Manila' });
+async function bootstrapPriceMonths() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS item_price_months (
+      id        serial PRIMARY KEY,
+      item_id   integer NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+      starts_on date    NOT NULL,                 -- in force from this day until the next entry
+      snap      jsonb   NOT NULL,                 -- every price field, as it stands from then
+      source    text    NOT NULL DEFAULT 'list',  -- list (set on purpose) | edit | baseline
+      set_by    text,
+      set_at    timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (item_id, starts_on)
+    )`);
+  // Any change to an item's prices is kept as an entry starting today -- except
+  // while the switch-over itself is writing them.
+  await pool.query(`
+    CREATE OR REPLACE FUNCTION record_item_price_month() RETURNS trigger AS $$
+    BEGIN
+      IF current_setting('app.price_sync', true) = 'on' THEN RETURN NEW; END IF;
+      IF TG_OP = 'UPDATE' AND ${snapSql('OLD')} IS NOT DISTINCT FROM ${snapSql('NEW')} THEN
+        RETURN NEW;
+      END IF;
+      INSERT INTO item_price_months (item_id, starts_on, snap, source)
+      VALUES (NEW.id, ${TODAY_SQL}, ${snapSql('NEW')},
+              CASE WHEN TG_OP = 'INSERT' THEN 'baseline' ELSE 'edit' END)
+      ON CONFLICT (item_id, starts_on) DO UPDATE
+        SET snap = EXCLUDED.snap, source = EXCLUDED.source, set_at = now();
+      RETURN NEW;
+    END $$ LANGUAGE plpgsql`);
+  await pool.query('DROP TRIGGER IF EXISTS items_price_month ON items');
+  await pool.query(`CREATE TRIGGER items_price_month AFTER INSERT OR UPDATE ON items
+    FOR EACH ROW EXECUTE FUNCTION record_item_price_month()`);
+  // the record opens with the prices in force today, so every item has an entry
+  const { rowCount } = await pool.query(`
+    INSERT INTO item_price_months (item_id, starts_on, snap, source)
+    SELECT i.id, ${TODAY_SQL}, ${snapSql('i')}, 'baseline' FROM items i
+     WHERE NOT EXISTS (SELECT 1 FROM item_price_months p WHERE p.item_id = i.id)
+    ON CONFLICT DO NOTHING`);
+  if (rowCount) console.log(`[price history] recorded the prices in force for ${rowCount} item(s)`);
+}
+// Put every item on its latest entry that has started. Runs inside the caller's
+// transaction, with the trigger standing aside so a switch-over is not taken
+// for an edit.
+async function syncCurrentPrices(db) {
+  await db.query(`SELECT set_config('app.price_sync', 'on', true)`);
+  const { rowCount } = await db.query(`
+    WITH latest AS (
+      SELECT DISTINCT ON (item_id) item_id, snap FROM item_price_months
+       WHERE starts_on <= ${TODAY_SQL} ORDER BY item_id, starts_on DESC),
+    r AS (SELECT l.item_id, p.* FROM latest l, jsonb_populate_record(NULL::items, l.snap) p)
+    UPDATE items i SET sales_price = r.sales_price, cost = r.cost, deal = r.deal,
+           promotion = r.promotion, outright_rate = r.outright_rate, cod_rate = r.cod_rate,
+           cod_discount = COALESCE(r.cod_discount, 0), term_discount = COALESCE(r.term_discount, 0),
+           price_breakdown = r.price_breakdown
+      FROM r WHERE r.item_id = i.id AND ${snapSql('i')} IS DISTINCT FROM ${snapSql('r')}`);
+  await db.query(`SELECT set_config('app.price_sync', 'off', true)`);
+  return rowCount;
+}
+async function runPriceSync() {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const n = await syncCurrentPrices(client);
+    await client.query('COMMIT');
+    if (n) console.log(`[price history] ${n} item(s) moved onto prices starting today`);
+    return n;
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { client.release(); }
+}
+bootstrapPriceMonths().then(runPriceSync)
+  .catch((e) => console.error('Price-history bootstrap failed:', e));
+setInterval(() => runPriceSync().catch((e) => console.error('Price switch-over:', e.message)),
+  60 * 60 * 1000);
+
 // ---------- sales billed by URC marketing ----------
 // Goods URC's marketing arm pays for: the stock leaves the shelf and must be
 // deducted, but the money is never Elishen's, so the invoice has to stay out of
@@ -507,6 +640,8 @@ const NON_ADMIN_ALLOWED = [
   [/^POST$/,   /^\/store_visits$/],               // field visit reports (reps' core duty)
   [/^POST$/,   /^\/cis$/],                        // customer information sheet — anyone may file one
   [/^PUT$/,    /^\/cis\/\d+$/],                   // ...and keep it up to date (deleting stays admin-only)
+  [/^PUT$/,    /^\/doc_signatures$/],             // sign a line (the handler keeps payslips/DTRs admin-only)
+  [/^POST$/,   /^\/signer_names$/],               // add who signed for a customer, from the pad
 ];
 
 // friendly transaction notices for the bell — the casual events, not an audit log
@@ -609,6 +744,148 @@ app.get('/api/expenses/:id/receipt', wrap(async (req, res) => {
   const { rows } = await q('SELECT receipt FROM expenses WHERE id = $1', [req.params.id]);
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   res.json({ receipt: rows[0].receipt });
+}));
+
+// ---------- price history: reading and setting prices from a date ----------
+// The switch-over also runs when items are read, at most every five minutes, so
+// the first sale on a new price's start date is priced on it before the hourly run.
+let priceSyncAt = 0;
+app.use('/api/items', (req, res, next) => {
+  if (req.method !== 'GET' || Date.now() - priceSyncAt < 5 * 60 * 1000) return next();
+  priceSyncAt = Date.now();
+  runPriceSync().catch((e) => console.error('Price switch-over:', e.message))
+    .finally(() => next());
+});
+const priceDateOf = (d) => {
+  const s = String(d || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
+  const t = new Date(`${s}T00:00:00Z`);
+  return !isNaN(t) && t.toISOString().slice(0, 10) === s ? s : null;     // a real calendar day
+};
+function pricePatch(body) {
+  const patch = {};
+  for (const f of PRICE_FIELDS) {
+    if (!(f in body)) continue;
+    let v = body[f];
+    if (PRICE_NUMERIC.includes(f)) {
+      if (v === '' || v == null) v = null;
+      else if (!Number.isFinite(Number(v))) {
+        throw { status: 400, message: `${f.replace(/_/g, ' ')} must be a number.` };
+      } else v = Number(v);
+      if (v == null && (f === 'cod_discount' || f === 'term_discount')) v = 0;
+    } else if (f === 'price_breakdown') {
+      if (v != null && (typeof v !== 'object' || Array.isArray(v))) {
+        throw { status: 400, message: 'The price breakdown must be an object.' };
+      }
+    } else v = v == null || v === '' ? null : String(v);
+    patch[f] = v;
+  }
+  return patch;
+}
+// Every item's prices as they stand on a date: the entry starting that day, or
+// the latest one before it.
+app.get('/api/item_price_months', wrap(async (req, res) => {
+  const start = priceDateOf(req.query.date);
+  if (!start) return res.status(400).json({ error: 'Give a date as YYYY-MM-DD.' });
+  const { rows } = await q(`
+    SELECT DISTINCT ON (item_id) item_id, to_char(starts_on, 'YYYY-MM-DD') AS starts_on,
+           snap, source, set_by, set_at
+      FROM item_price_months WHERE starts_on <= $1 ORDER BY item_id, starts_on DESC`, [start]);
+  res.json(rows);
+}));
+// The whole record, oldest first: what the sale form and the reports price by.
+app.get('/api/item_price_months/history', wrap(async (req, res) => {
+  const { rows } = await q(`SELECT item_id, to_char(starts_on, 'YYYY-MM-DD') AS starts_on, snap
+    FROM item_price_months ORDER BY item_id, starts_on`);
+  res.json(rows);
+}));
+// The price log, like a stock take for prices: every entry, when it started and
+// ended, what it replaced, who set it, and the sales and orders priced on it.
+app.get('/api/item_price_months/log', wrap(async (req, res) => {
+  const { rows } = await q(`
+    WITH p AS (
+      SELECT m.*, LAG(m.snap) OVER w AS prev_snap, LEAD(m.starts_on) OVER w AS next_starts
+        FROM item_price_months m
+      WINDOW w AS (PARTITION BY m.item_id ORDER BY m.starts_on))
+    SELECT p.id, p.item_id, i.name, i.alias, i.category,
+           to_char(p.starts_on, 'YYYY-MM-DD') AS starts_on,
+           to_char(p.next_starts, 'YYYY-MM-DD') AS ends_before,
+           p.snap, p.prev_snap, p.source, p.set_by, p.set_at,
+           u.lines AS sale_lines, u.qty AS sold_qty,
+           to_char(u.first_day, 'YYYY-MM-DD') AS first_sold, to_char(u.last_day, 'YYYY-MM-DD') AS last_sold,
+           o.lines AS order_lines, o.qty AS ordered_qty
+      FROM p JOIN items i ON i.id = p.item_id
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int AS lines, COALESCE(sum(si.qty), 0) AS qty,
+               min(s.date) AS first_day, max(s.date) AS last_day
+          FROM sale_items si JOIN sales s ON s.id = si.sale_id
+         WHERE si.item_id = p.item_id AND s.date >= p.starts_on
+           AND (p.next_starts IS NULL OR s.date < p.next_starts)
+           AND s.status NOT ILIKE '%cancel%') u ON true
+      LEFT JOIN LATERAL (
+        SELECT count(*)::int AS lines, COALESCE(sum(pu.purchase_qty), 0) AS qty
+          FROM purchases pu
+         WHERE pu.item_id = p.item_id AND pu.order_date >= p.starts_on
+           AND (p.next_starts IS NULL OR pu.order_date < p.next_starts)
+           AND COALESCE(pu.status, '') NOT ILIKE '%cancel%') o ON true
+     ORDER BY p.starts_on DESC, i.name`);
+  res.json({ today: todayPH(), rows });
+}));
+// Set an item's prices from a date. It starts from the entry in force that day,
+// so changing one figure keeps all the others. A date that has come takes
+// effect at once; a later one waits for its day.
+app.put('/api/item_price_months/:month/:item_id', wrap(async (req, res) => {
+  const month = req.params.month;
+  const start = priceDateOf(month);
+  if (!start) return res.status(400).json({ error: 'Give a date as YYYY-MM-DD.' });
+  const itemId = Number(req.params.item_id);
+  const patch = pricePatch(req.body || {});
+  if (!Object.keys(patch).length) return res.status(400).json({ error: 'No prices to save.' });
+  const who = req._auth?.name || 'unknown';
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: it } = await client.query(
+      `SELECT name, ${snapSql('items')} AS snap FROM items WHERE id = $1`, [itemId]);
+    if (!it.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'No such item.' }); }
+    const { rows: base } = await client.query(`SELECT snap FROM item_price_months
+      WHERE item_id = $1 AND starts_on <= $2 ORDER BY starts_on DESC LIMIT 1`, [itemId, start]);
+    const snap = { ...(base[0]?.snap || it[0].snap), ...patch };
+    await client.query(`
+      INSERT INTO item_price_months (item_id, starts_on, snap, source, set_by) VALUES ($1, $2, $3, 'list', $4)
+      ON CONFLICT (item_id, starts_on) DO UPDATE
+        SET snap = EXCLUDED.snap, source = 'list', set_by = EXCLUDED.set_by, set_at = now()`,
+      [itemId, start, snap, who]);
+    const moved = start <= todayPH() ? await syncCurrentPrices(client) : 0;
+    await client.query('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+      [who, 'SET prices', `from ${start} · "${it[0].name}" · ${Object.keys(patch).join(', ')}`]);
+    await client.query('COMMIT');
+    res.json({ starts_on: start, item_id: itemId, snap, applied_now: moved > 0,
+      takes_effect: start > todayPH() ? start : 'now' });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally { client.release(); }
+}));
+// Take back an entry -- a change set ahead that should not happen, or a history
+// entry made in error; its days then fall back on the entry before. The prices
+// in force today are changed by editing them, never by removing them.
+app.delete('/api/item_price_months/:month/:item_id', wrap(async (req, res) => {
+  const start = priceDateOf(req.params.month);
+  if (!start) return res.status(400).json({ error: 'Give a date as YYYY-MM-DD.' });
+  const itemId = Number(req.params.item_id);
+  const { rows: inForce } = await q(`SELECT to_char(starts_on, 'YYYY-MM-DD') AS d FROM item_price_months
+    WHERE item_id = $1 AND starts_on <= ${TODAY_SQL} ORDER BY starts_on DESC LIMIT 1`, [itemId]);
+  if (inForce[0]?.d === start) {
+    return res.status(400).json({ error: 'These are the prices in force now — edit them instead of removing them.' });
+  }
+  const { rowCount } = await q('DELETE FROM item_price_months WHERE item_id = $1 AND starts_on = $2',
+    [itemId, start]);
+  if (rowCount) {
+    await q('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+      [req._auth?.name || 'unknown', 'REMOVE prices', `from ${start} · item #${itemId}`]);
+  }
+  res.json({ removed: rowCount });
 }));
 
 // ---------- generic CRUD ----------
@@ -1206,7 +1483,145 @@ app.put('/api/deliveries/:id', wrap(async (req, res) => {
 
 app.delete('/api/deliveries/:id', wrap(async (req, res) => {
   const { rowCount } = await q('DELETE FROM deliveries WHERE id = $1', [req.params.id]);
+  await q(`DELETE FROM doc_signatures WHERE doc_type = 'DR' AND doc_key = $1`, [String(req.params.id)]);
   res.json({ deleted: rowCount });
+}));
+
+// The signing lines each document carries (beyond the DR customer's own).
+//   table    -- a stored record: the key is its id, and the record must exist.
+//   no table -- a document rebuilt from live data each time it prints. The key
+//               names that document on its day or period (a statement's customer
+//               and as-of date; a report's page, title and date; a DTR's employee
+//               and period), so a reprint of the same document shows who signed
+//               and when, and tomorrow's statement starts blank.
+//   staff    -- may a non-admin sign it? Drivers and warehouse staff sign DRs on
+//               the phone; payslips and DTRs are the admins' paperwork.
+const DOC_SIGN = {
+  DR:      { table: 'deliveries',   roles: ['issued', 'checked', 'delivered'], staff: true },
+  PAYSLIP: { table: 'payroll_runs', roles: ['employee', 'approver'],          staff: false },
+  SOA:     { roles: ['received'],                                              staff: true },
+  REPORT:  { roles: ['prepared', 'checked', 'approved'],                       staff: true },
+  DTR:     { roles: ['employee', 'approver'],                                  staff: false },
+};
+const docKeyOf = (spec, raw) => {
+  const k = String(raw ?? '').trim();
+  if (spec.table) return /^\d+$/.test(k) && Number(k) > 0 ? k : null;
+  return k && k.length <= 300 ? k : null;
+};
+app.get('/api/doc_signatures', wrap(async (req, res) => {
+  const spec = DOC_SIGN[req.query.doc_type];
+  if (!spec) return res.status(400).json({ error: 'Unknown document type.' });
+  if (!spec.staff && !req._isAdmin) return res.status(403).json({ error: 'Admins only.' });
+  const key = docKeyOf(spec, req.query.doc_key ?? req.query.doc_id);
+  if (!key) return res.json([]);
+  const { rows } = await q(`
+    SELECT role, name, signature, signed_by, signed_at FROM doc_signatures
+     WHERE doc_type = $1 AND doc_key = $2`, [req.query.doc_type, key]);
+  res.json(rows);
+}));
+// Sign one line, re-sign it, or (no signature) take it off.
+app.put('/api/doc_signatures', wrap(async (req, res) => {
+  const { doc_type, role, name, signature } = req.body;
+  const spec = DOC_SIGN[doc_type];
+  if (!spec || !spec.roles.includes(role)) {
+    return res.status(400).json({ error: 'Unknown document or signing line.' });
+  }
+  if (!spec.staff && !req._isAdmin) {
+    return res.status(403).json({ error: 'Only an admin can sign this document.' });
+  }
+  const key = docKeyOf(spec, req.body.doc_key ?? req.body.doc_id);
+  if (!key) return res.status(400).json({ error: 'Bad document reference.' });
+  if (signature && !/^data:image\/png;base64,[A-Za-z0-9+/=]+$/.test(signature)) {
+    return res.status(400).json({ error: 'A signature must be a PNG image from the signature pad.' });
+  }
+  if (spec.table) {
+    const { rowCount: exists } = await q(`SELECT 1 FROM ${spec.table} WHERE id = $1`, [Number(key)]);
+    if (!exists) return res.status(404).json({ error: 'That document no longer exists.' });
+  }
+  const who = req._auth?.name || 'unknown';
+  const printed = String(name ?? '').trim() || null;
+  if (!signature) {
+    await q('DELETE FROM doc_signatures WHERE doc_type = $1 AND doc_key = $2 AND role = $3',
+      [doc_type, key, role]);
+    await q('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+      [who, 'REMOVE signature', `${doc_type} ${key} · ${role}`]);
+    return res.json({ removed: true });
+  }
+  const { rows } = await q(`
+    INSERT INTO doc_signatures (doc_type, doc_key, role, name, signature, signed_by)
+    VALUES ($1,$2,$3,$4,$5,$6)
+    ON CONFLICT (doc_type, doc_key, role) DO UPDATE
+      SET name = EXCLUDED.name, signature = EXCLUDED.signature,
+          signed_by = EXCLUDED.signed_by, signed_at = now()
+    RETURNING role, name, signed_by, signed_at`,
+    [doc_type, key, role, printed, signature, who]);
+  await q('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+    [who, 'SIGN document', `${doc_type} ${key} · ${role}${printed ? ` · "${printed}"` : ''}`]);
+  res.json(rows[0]);
+}));
+
+// Who can be picked on the signature pad. Staff: active accounts, sales reps and
+// names added by hand. Customer people, each against the store they sign for:
+// the owners and managers on its information sheet, its signature specimens and
+// certifier, whoever signed for its deliveries and payments before, and names
+// added by hand. A "person" who is really a store name, or one of our own staff,
+// is left out -- those belong in the other lists.
+app.get('/api/signer_names', wrap(async (req, res) => {
+  const person = (g, m, s) => `NULLIF(TRIM(CONCAT_WS(' ', NULLIF(TRIM(${g}), ''),
+    NULLIF(TRIM(${m}), ''), NULLIF(TRIM(${s}), ''))), '')`;
+  const [staff, people, stores] = await Promise.all([
+    q(`SELECT name FROM users WHERE active
+       UNION SELECT name FROM sales_reps
+       UNION SELECT name FROM signer_names WHERE kind = 'staff'`),
+    q(`WITH sheet AS (
+         SELECT s.*, COALESCE(c.name, s.account_name) AS store
+           FROM customer_info_sheets s LEFT JOIN customers c ON c.id = s.customer_id),
+       p AS (
+         SELECT store, ${person('owner1_given', 'owner1_middle', 'owner1_surname')} AS name FROM sheet
+         UNION ALL SELECT store, ${person('owner2_given', 'owner2_middle', 'owner2_surname')} FROM sheet
+         UNION ALL SELECT store, ${person('mgr1_given', 'mgr1_middle', 'mgr1_surname')} FROM sheet
+         UNION ALL SELECT store, ${person('mgr2_given', 'mgr2_middle', 'mgr2_surname')} FROM sheet
+         UNION ALL SELECT store, NULLIF(TRIM(certified_name), '') FROM sheet
+         UNION ALL SELECT sh.store, NULLIF(TRIM(sp->>'name'), '')
+           FROM sheet sh, jsonb_array_elements(CASE WHEN jsonb_typeof(sh.specimens) = 'array'
+                                                    THEN sh.specimens ELSE '[]'::jsonb END) sp
+         UNION ALL SELECT customer, name FROM signer_names WHERE kind = 'customer'
+         UNION ALL SELECT sa.customer, NULLIF(TRIM(d.received_by), '')
+           FROM deliveries d JOIN sales sa ON sa.id = d.sale_id
+         UNION ALL SELECT sa.customer, NULLIF(TRIM(py.payer_name), '')
+           FROM payments py JOIN sales sa ON sa.id = py.sale_id)
+       SELECT DISTINCT ON (UPPER(name), UPPER(COALESCE(store, ''))) name, store
+         FROM p WHERE name IS NOT NULL
+        ORDER BY UPPER(name), UPPER(COALESCE(store, ''))`),
+    q('SELECT name FROM customers ORDER BY UPPER(name)'),
+  ]);
+  const up = (v) => String(v || '').trim().toUpperCase();
+  const staffNames = [...new Map(staff.rows.filter((r) => up(r.name))
+    .map((r) => [up(r.name), r.name.trim()])).values()].sort((a, b) => a.localeCompare(b));
+  const notPeople = new Set([...stores.rows.map((r) => up(r.name)), ...staffNames.map(up)]);
+  res.json({
+    staff: staffNames,
+    customer: people.rows.filter((r) => !notPeople.has(up(r.name)))
+      .map((r) => ({ name: r.name, store: r.store || null })),
+    stores: stores.rows.map((r) => r.name),
+  });
+}));
+// Add a name by hand from the signature pad: someone who signs for a customer
+// (against that store) or a staff member without an account.
+app.post('/api/signer_names', wrap(async (req, res) => {
+  const kind = ['staff', 'customer'].includes(req.body.kind) ? req.body.kind : null;
+  const name = String(req.body.name ?? '').replace(/\s+/g, ' ').trim();
+  const customer = kind === 'customer' ? (String(req.body.customer ?? '').trim() || null) : null;
+  if (!kind) return res.status(400).json({ error: 'Say whether this is an employee or a customer.' });
+  if (!name || name.length > 120) return res.status(400).json({ error: 'A name is 1 to 120 characters.' });
+  const who = req._auth?.name || 'unknown';
+  const { rows } = await q(`
+    INSERT INTO signer_names (kind, name, customer, created_by) VALUES ($1,$2,$3,$4)
+    ON CONFLICT DO NOTHING RETURNING id, kind, name, customer`, [kind, name, customer, who]);
+  if (!rows.length) return res.json({ kind, name, customer, existing: true });
+  await q('INSERT INTO audit_log (user_name, action, detail) VALUES ($1,$2,$3)',
+    [who, 'ADD signer name', `${kind}: "${name}"${customer ? ` for "${customer}"` : ''}`]);
+  res.status(201).json(rows[0]);
 }));
 
 // ---------- customer directory (distinct names from past transactions) ----------
@@ -1262,6 +1677,7 @@ const NAME_REFS = [
   ['customer_advances', 'customer', 'advances'],
   ['customer_tiers', 'customer', 'pricing tiers'],
   ['customer_info_sheets', 'account_name', 'information sheets'],
+  ['signer_names', 'customer', 'signing names'],
 ];
 app.put('/api/customers/:id', wrap(async (req, res) => {
   const { name, address, contact_no, term, tier, notes, version } = req.body;

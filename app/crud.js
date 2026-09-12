@@ -36,14 +36,14 @@ function crudBlock(key, cfg) {
     key: '_actions', label: '', render: (r) =>
       `<span class="actions">
         <button type="button" class="mini" data-crud-edit="${key}" data-id="${r.id}">Edit</button>
-        <button type="button" class="mini danger" data-crud-del="${key}" data-id="${r.id}">Delete</button>
+        ${cfg.noDelete ? '' : `<button type="button" class="mini danger" data-crud-del="${key}" data-id="${r.id}">Delete</button>`}
       </span>`,
   }];
   return `
   <section class="crudblock" data-crud="${key}">
     <div class="crudhead">
       <h3>${esc(cfg.title)}</h3>
-      <button type="button" class="mini add" data-crud-new="${key}">Add</button>
+      ${cfg.noAdd ? '' : `<button type="button" class="mini add" data-crud-new="${key}">Add</button>`}
       ${key === 'items' ? `
         <button type="button" class="mini printbtn" data-crud-pdf="${key}">Save as PDF</button>
         <button type="button" class="mini printbtn" data-crud-print="${key}">Print</button>

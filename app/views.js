@@ -29,6 +29,50 @@ const termButtons = (id, v) => {
     ${v == null ? '' : b('', '', 'Reset')}
   </span>`;
 };
+// ---- price history ----
+// Every item's whole price structure is kept as dated entries, each in force
+// from its start date until the next (see the server's item_price_months). A
+// sale or an order is worked out on the prices in force on its own date, so a
+// new price never rewrites what the old one earned.
+const todayLocal = () => new Date().toLocaleDateString('en-CA');
+const thisMonth = () => todayLocal().slice(0, 7);
+const dayLabel = (d) => {
+  const [y, mo, da] = String(d).slice(0, 10).split('-').map(Number);
+  return new Date(y, mo - 1, da).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' });
+};
+const monthLabel = (m) => {
+  const [y, mo] = String(m).split('-').map(Number);
+  return new Date(y, mo - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+};
+// the start date being priced on the Inventory page; null means today's prices
+const editingPriceMonth = () => {
+  const d = window._priceMonth;
+  return d && d !== todayLocal() ? d : null;
+};
+// the record, per item, oldest month first; empty on a server not yet updated
+async function loadPriceBook() {
+  const rows = await api.get('/api/item_price_months/history').catch(() => []);
+  const book = {};
+  (rows || []).forEach((r) => (book[r.item_id] ??= []).push(r));
+  return book;
+}
+// an item as its prices stood on a date: the latest entry started by then; a
+// date before any entry keeps the item as it is today
+function priceAt(book, item, date) {
+  if (!item || !book) return item;
+  const list = book[item.id];
+  if (!list || !list.length) return item;
+  const d = String(date || '').slice(0, 10);
+  let hit = null;
+  for (const r of list) { if (r.starts_on <= d) hit = r; else break; }
+  return hit ? { ...item, ...hit.snap } : item;
+}
+window.loadPriceBook = loadPriceBook;
+window.priceAt = priceAt;
+// the item-form fields that are prices, and so belong to a dated entry
+const MONTH_PRICE_FIELDS = ['sales_price', 'cost', 'deal', 'outright_rate', 'cod_rate',
+  'cod_discount', 'term_discount', 'promotion'];
+
 const termWhen = (r) => (r.term_approved_at
   ? `<small style="color:var(--ink-2)">${new Date(r.term_approved_at).toLocaleDateString()}`
     + `${r.term_approved_by ? ` · ${esc(r.term_approved_by)}` : ''}`
@@ -389,7 +433,8 @@ const views = {
       <h2>New Sale</h2>
       <form id="saleForm" class="form">
         <div class="grid3">
-          <label>Date <input type="date" name="date" value="${new Date().toISOString().slice(0, 10)}" required></label>
+          <label>Date <input type="date" name="date" value="${new Date().toISOString().slice(0, 10)}" required>
+            <small id="priceMonthNote" class="checkok"></small></label>
           <label>Invoice # (next in series — editable)
             <input name="sales_no" required autocomplete="off">
             <small id="invCheck"></small></label>
@@ -756,7 +801,8 @@ const views = {
             <button type="button" class="mini" data-editdr="${r.id}">Edit</button>
             <button type="button" class="mini" data-editorder="${r.sale_id}"
               title="Receiver changed the order — add or remove items on the invoice">Edit order</button>
-            ${r.status !== 'Delivered' ? `<button type="button" class="mini add" data-markdel="${r.id}">Mark delivered</button>` : ''}
+            ${r.status !== 'Delivered' ? `<button type="button" class="mini add" data-markdel="${r.id}"
+              data-markdelcust="${esc(r.customer ?? '')}">Mark delivered</button>` : ''}
             <button type="button" class="mini danger" data-deldr="${r.id}">Delete</button>
           </span>` },
       ])}
@@ -1327,10 +1373,47 @@ const views = {
           </tr>`;
         }).join('')}</tbody>
       </table></div>`;
+    // ---- prices from a date: set the next price list ahead, or look back ----
+    // The table, the item form and the Pricing editor all work on the prices
+    // starting on the date picked here. Today is the prices in force, saved to the
+    // items as always -- and kept in the Price Log as starting today.
+    const pm = isAdmin() ? editingPriceMonth() : null;
+    const pmRows = pm ? await api.get(`/api/item_price_months?date=${pm}`).catch(() => []) : [];
+    const pmBy = Object.fromEntries(pmRows.map((r) => [r.item_id, r]));
+    const shown = pm
+      ? items.map((i) => (pmBy[i.id] ? { ...i, ...pmBy[i.id].snap, _pm: pmBy[i.id] } : { ...i, _pm: null }))
+      : items;
+    const todayP = todayLocal();
+    const setCount = pm ? pmRows.filter((r) => r.starts_on === pm).length : 0;
+    const pmStatus = !pm
+      ? `<b>Today</b> — the prices in force now. A change to an item or its Pricing applies straight
+         away and goes in the <b>Price Log</b> as starting today. Pick a later date — usually the 1st of
+         next month — to set the next price list ahead of time.`
+      : pm > todayP
+        ? `<b>From ${esc(dayLabel(pm))}</b> — set ahead. Nothing changes until that day; until then every
+           sale is priced on today's. <b>${setCount}</b> of ${items.length} items have their own prices
+           starting that day — the rest carry on unchanged.`
+        : `<b>From ${esc(dayLabel(pm))}</b> — a past date. Prices entered here are what sales, orders and
+           fund reports dated from that day (until the next change) are worked out on.
+           <b>${setCount}</b> items have prices starting that day; the rest show what was in force.`;
+    const pmBar = !isAdmin() ? '' : `
+      <div class="pmbar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:10px 12px;
+        margin-bottom:12px;border:1px solid var(--border);border-radius:10px;
+        background:${pm ? 'var(--primary-soft, #e8f3ea)' : 'var(--surface)'}">
+        <b>Prices starting</b>
+        <input type="date" id="pmMonth" value="${esc(window._priceMonth || todayP)}" style="max-width:180px">
+        <button type="button" class="mini" data-pmgo="this">Today</button>
+        <button type="button" class="mini" data-pmgo="next">1st of next month</button>
+        <button type="button" class="mini" data-view-go="pricelog">Price Log</button>
+        <span style="flex:1;min-width:240px;font-size:13px;color:var(--ink-2)">${pmStatus}</span>
+      </div>`;
     return `<h2>Inventory</h2>
       ${expHtml}
+      ${pmBar}
       ${crudBlock('items', {
-        title: `Items (${items.length})`, endpoint: '/api/items', rows: items,
+        title: pm ? `Items — prices from ${dayLabel(pm)}` : `Items (${items.length})`,
+        endpoint: pm ? `/api/item_price_months/${pm}` : '/api/items', rows: shown,
+        noAdd: !!pm, noDelete: !!pm,
         fields: [
           { name: 'name', label: 'Item name', required: true },
           { name: 'alias', label: 'Alias (warehouse short code, e.g. SI 2 (50KG))' },
@@ -1355,7 +1438,7 @@ const views = {
           { name: 'units_in_purchase', label: 'Units in purchase', type: 'number' },
           { name: 'promotion', label: 'Promotion' },
           { name: 'notes', label: 'Notes' },
-        ],
+        ].filter((f) => !pm || MONTH_PRICE_FIELDS.includes(f.name)),
         columns: [
           { key: 'alias', label: 'Alias', render: (r) => aliasOf(r)
               ? `<b>${esc(aliasOf(r))}</b>` : '<small style="color:var(--ink-3)">—</small>' },
@@ -1372,7 +1455,9 @@ const views = {
               (r.sales_price != null && r.cost != null)
                 ? `<strong>${fmt(r.sales_price - r.cost)}</strong>` : '-' },
           { key: '_mg', label: 'Margin', num: 1, render: (r) => {
-              const m = stockBy[r.id]?.margin;
+              const m = pm
+                ? (Number(r.sales_price) ? (Number(r.sales_price) - Number(r.cost || 0)) / Number(r.sales_price) : null)
+                : stockBy[r.id]?.margin;
               return m != null ? (m * 100).toFixed(1) + '%' : '-'; } },
           { key: 'deal', label: 'Deal', render: (r) => esc(r.deal ?? '') },
           { key: 'cod_discount', label: 'Disc./bag COD · Term', num: 1, render: (r) =>
@@ -1380,10 +1465,18 @@ const views = {
                 ? `<strong>${fmt(r.cod_discount)}</strong> · ${fmt(r.term_discount)}`
                 : '<small style="color:var(--ink-3)">—</small>' },
           { key: '_st', label: 'Status', render: (r) => statusBadge(stockBy[r.id]?.status ?? '-') },
+          ...(pm ? [{ key: '_pm', label: `From ${dayLabel(pm)}`, render: (r) => (!r._pm
+            ? '<small style="color:var(--ink-3)">no record — shows today’s</small>'
+            : r._pm.starts_on === pm
+              ? `<span class="badge green">set</span>${r._pm.set_by
+                  ? ` <small style="color:var(--ink-2)">${esc(r._pm.set_by)}</small>` : ''}
+                 <button type="button" class="mini danger" data-pmundo="${r.id}"
+                   title="Take back the prices starting ${esc(dayLabel(pm))} for this item">Undo</button>`
+              : `<small style="color:var(--ink-2)">in force since ${esc(dayLabel(r._pm.starts_on))}</small>`) }] : []),
           { key: '_pr', label: '', render: (r) => `<button type="button" class="mini" data-pricing="${r.id}">Pricing</button>` },
-            { key: '_cond', label: '', render: (r) =>
+            { key: '_cond', label: '', render: (r) => (pm ? '' :
               `<button type="button" class="mini" data-mark-opened="${r.id}">Opened</button>
-               <button type="button" class="mini danger" data-mark-damaged="${r.id}">Damaged</button>` },
+               <button type="button" class="mini danger" data-mark-damaged="${r.id}">Damaged</button>`) },
         ],
       })}
       <div id="priceModal" class="modal hidden">
@@ -1843,7 +1936,24 @@ const views = {
     ]);
     const acctMap = lookupMap(acctOpts);
     window._acctBalances = bal;
+    // Cash, GCash and the banks are rows here, not code. A new one -- GoTyme Bank,
+    // Maya, another bank -- is added in a moment and every payment picker has it.
     return `<h2>Accounts</h2>
+      <div class="acctadd" style="border:1px solid var(--border);border-radius:10px;padding:12px 14px;
+        margin-bottom:14px;background:var(--surface)">
+        <h3 style="margin:0 0 4px">Add a payment account</h3>
+        <p class="empty" style="margin:0 0 10px">Cash, GCash, banks and e-wallets are all accounts.
+          Add one here and it appears straight away in every <b>Payment account</b> picker — New Sale,
+          Payments, advances and expenses. No system update needed. You can also pick
+          <b>+ Add a new account…</b> at the bottom of any of those pickers.
+          <br>On file: ${accts.map((a) => esc(a.name)).join(' · ') || 'none yet'}</p>
+        <form id="acctAddForm" class="form" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;
+          margin:0;padding:0;border:0">
+          <label>Account name <input name="acct_name" required autocomplete="off" placeholder="e.g. GoTyme Bank"></label>
+          <label>Opening balance <input name="acct_opening" type="number" step="any" value="0"></label>
+          <button type="submit" class="primary">Add account</button>
+        </form>
+      </div>
       <h3>Balances</h3>
       ${table(bal, [
         { key: 'name', label: 'Account' },
@@ -2016,9 +2126,9 @@ const views = {
   // ================= Inventory Dashboard (mirrors the sheet's biggest tab) =================
   // ================= Matrix Report (URC pricing: ex-plant capital → published price) =================
   async matrix() {
-    const [items, sales, claims, mxStock, mxDeliv] = await Promise.all([
+    const [items, sales, claims, mxStock, mxDeliv, book] = await Promise.all([
       api.get('/api/items'), api.get('/api/sales'), api.get('/api/claims'),
-      api.get('/api/reports/item_stock'), api.get('/api/deliveries')]);
+      api.get('/api/reports/item_stock'), api.get('/api/deliveries'), loadPriceBook()]);
     // Who actually received each product. A delivery receipt covers a whole
     // invoice, so the item lines come from the sale it belongs to -- that is what
     // lets a product be traced back to the people who took it.
@@ -2319,28 +2429,39 @@ const views = {
       ['cash_discount', 'COD Dealers Discount'],
       ['ktech', 'Ktech & Sales Incentives'],
     ];
+    // every line on the build-up of its own sale's month: a price change never
+    // rewrites what an earlier month's bags earned
     let incSkipped = 0;
-    const incItems = Object.entries(soldFeeds).map(([name, qty]) => {
-      const it = items.find((i) => i.name === name);
-      const b = it?.price_breakdown?.dealer_build;
-      if (!b) { incSkipped += qty; return null; }
-      const comps = BUILD_INCOME.map(([k]) => (N(b[k]) || 0) * qty);
-      const perSack = BUILD_INCOME.reduce((a, [k]) => a + (N(b[k]) || 0), 0);
-      return { name, qty, comps, perSack, total: perSack * qty };
-    }).filter(Boolean).sort((a, b) => b.total - a.total);
+    const itemsById = Object.fromEntries(items.map((i) => [i.id, i]));
+    const itemByName = Object.fromEntries(items.map((i) => [i.name, i]));
+    const incByProd = {};
+    inRange.forEach((s) => (s.items || []).forEach((it) => {
+      if (it.promo) return;                                    // free goods earn nothing
+      const base = itemsById[it.item_id] || itemByName[it.item];
+      if (!base || base.category === 'Robichem') return;
+      const qty = Number(it.qty) || 0;
+      const b = priceAt(book, base, s.date)?.price_breakdown?.dealer_build;
+      if (!b) { incSkipped += qty; return; }
+      const row = (incByProd[base.name] ??= { name: base.name, qty: 0, comps: BUILD_INCOME.map(() => 0) });
+      row.qty += qty;
+      BUILD_INCOME.forEach(([k], ix) => { row.comps[ix] += (N(b[k]) || 0) * qty; });
+    }));
+    const incItems = Object.values(incByProd).map((r) => {
+      const total = r.comps.reduce((a, v) => a + v, 0);
+      return { ...r, total, perSack: r.qty ? total / r.qty : 0 };   // an average if prices moved
+    }).sort((a, b) => b.total - a.total);
     const compTotals = BUILD_INCOME.map(([, lab], ix) =>
       ({ lab, val: incItems.reduce((a, r) => a + r.comps[ix], 0) }));
     const incGrand = incItems.reduce((a, r) => a + r.total, 0);
     const incBags = incItems.reduce((a, r) => a + r.qty, 0);
     // the same computation PER INVOICE — every sale shows what it earned
-    const itemsById = Object.fromEntries(items.map((i) => [i.id, i]));
     const incBySale = inRange.map((s) => {
       const comps = BUILD_INCOME.map(() => 0);
       let bags = 0;
       (s.items || []).forEach((it) => {
         if (it.promo) return;                                  // free goods earn nothing
         const item = itemsById[it.item_id];
-        const b = item?.price_breakdown?.dealer_build;
+        const b = priceAt(book, item, s.date)?.price_breakdown?.dealer_build;
         if (!b || item.category === 'Robichem') return;
         const qty = Number(it.qty) || 0;
         bags += qty;
@@ -2559,14 +2680,124 @@ const views = {
       ${claimsHtml}`)}`;
   },
 
+  // ================= Price Log (admin) =================
+  // Like a stock take, but for prices: every change to an item's price structure,
+  // the day it started and ended, what it replaced, who set it, and the sales and
+  // orders priced on it. New prices are set ahead on the Inventory page ("Prices
+  // starting…"); any edit to an item's prices lands here as starting that day.
+  async pricelog() {
+    const { today, rows } = await api.get('/api/item_price_months/log')
+      .catch(() => ({ today: todayLocal(), rows: [] }));
+    const N = (v) => (v == null || v === '' || isNaN(Number(v))) ? null : Number(v);
+    const F = (v) => (v == null ? '—'
+      : Number(v).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    const fmtV = (v) => (v == null || v === '' ? '—' : N(v) != null ? F(v) : String(v));
+    // what an entry changed against the one before it, in plain words
+    const TOP = [['sales_price', 'SRP'], ['cost', 'Capital'], ['outright_rate', 'Outright rate'],
+      ['cod_rate', 'COD rate'], ['cod_discount', 'COD disc./bag'], ['term_discount', 'Term disc./bag'],
+      ['deal', 'Deal'], ['promotion', 'Promotion']];
+    const PB = [['ex_plant', 'Ex-plant'], ['pbd_rate', 'PBD rate'], ['vat', 'VAT']];
+    const DISC = { distributor: 'Distributor disc.', od: 'OD disc.', pickup: 'Pick-up disc.',
+      bdf: 'BDF disc.', manpower: 'Manpower disc.', special: 'Special disc.' };
+    const BUILD = { distributor_income: 'Distributor income', fth: 'Freight plant→whse',
+      dist_to_dealer: 'Freight whse→dealer', sales_fund: 'Sales support', manpower_fund: 'Manpower fund',
+      bus_devt: 'Business devt', tactical_fund: 'Tactical fund', dealer_discount: 'Dealer discount',
+      cash_discount: 'COD discount', ktech: 'Ktech incentives', net_dealer_price: 'Net dealer price' };
+    const changesOf = (a, b) => {
+      const out = [];
+      const cmp = (label, x, y) => {
+        const same = (N(x) != null && N(y) != null) ? N(x) === N(y) : String(x ?? '') === String(y ?? '');
+        if (!same) out.push(`${label} ${fmtV(x)} → ${fmtV(y)}`);
+      };
+      TOP.forEach(([k, l]) => cmp(l, a[k], b[k]));
+      const pa = a.price_breakdown || {}, pb = b.price_breakdown || {};
+      PB.forEach(([k, l]) => cmp(l, pa[k], pb[k]));
+      const keys = (x, y) => [...new Set([...Object.keys(x || {}), ...Object.keys(y || {})])];
+      keys(pa.discounts, pb.discounts).forEach((k) => cmp(DISC[k] || k, pa.discounts?.[k], pb.discounts?.[k]));
+      keys(pa.dealer_build, pb.dealer_build).forEach((k) =>
+        cmp(BUILD[k] || k, pa.dealer_build?.[k], pb.dealer_build?.[k]));
+      return out;
+    };
+    const dayBefore = (d) => {
+      const [y, m, da] = d.split('-').map(Number);
+      return new Date(y, m - 1, da - 1).toLocaleDateString('en-CA');
+    };
+    const all = (rows || []).map((r) => {
+      const s = r.snap || {};
+      const bd = s.price_breakdown?.dealer_build || {};
+      const status = r.starts_on > today ? 'scheduled'
+        : (!r.ends_before || r.ends_before > today) ? 'in force' : 'ended';
+      return { ...r, status, srp: N(s.sales_price), capital: N(s.cost),
+        build: Object.entries(bd).filter(([k]) => k !== 'net_dealer_price')
+          .reduce((a, [, v]) => a + (N(v) || 0), 0) || null,
+        changes: r.prev_snap ? changesOf(r.prev_snap, s) : null };
+    });
+    const cat = window._plCat || '';
+    const st = window._plStatus || '';
+    const cats = [...new Set(all.map((r) => r.category).filter(Boolean))].sort();
+    const shown = all.filter((r) => (!cat || r.category === cat) && (!st || r.status === st));
+    const tab = (attr, v, label, on) => `<button type="button" class="mini ${on ? 'add' : ''}"
+      data-${attr}="${esc(v)}">${esc(label)}</button>`;
+    const thisM = today.slice(0, 7);
+    const SOURCE = { list: 'Set on the Inventory page', edit: 'Edited on the item',
+      baseline: 'First record — in force when tracking began' };
+    return `<h2>Price Log</h2>
+      <p class="empty" style="margin:4px 0 12px">Every price change, like a stock take for prices: the
+        day each price <b>started</b>, until when it held, what it <b>changed</b> from the one before,
+        who set it, and the <b>sales and orders</b> priced on it. Set the next price list ahead on the
+        <b>Inventory</b> page ("Prices starting…"); a change made on an item is logged as starting that day.</p>
+      <div class="cards" style="margin-bottom:12px">
+        <div class="card"><span>Price entries</span><strong>${all.length}</strong></div>
+        <div class="card green"><span>Changes this month</span>
+          <strong>${all.filter((r) => r.starts_on.slice(0, 7) === thisM && r.source !== 'baseline').length}</strong></div>
+        <div class="card amber"><span>Set ahead (not started)</span>
+          <strong>${all.filter((r) => r.status === 'scheduled').length}</strong></div>
+        <div class="card"><span>Products with a change</span>
+          <strong>${new Set(all.filter((r) => r.prev_snap).map((r) => r.item_id)).size}</strong></div>
+      </div>
+      <div class="toolbar" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">
+        ${tab('plst', '', 'All', !st)}${tab('plst', 'in force', 'In force', st === 'in force')}
+        ${tab('plst', 'scheduled', 'Set ahead', st === 'scheduled')}${tab('plst', 'ended', 'Ended', st === 'ended')}
+        <span style="flex:1"></span>
+        ${tab('plcat', '', 'All categories', !cat)}
+        ${cats.map((c) => tab('plcat', c, c, cat === c)).join('')}
+      </div>
+      ${table(shown, [
+        { key: 'starts_on', label: 'Started', render: (r) => `<b>${esc(dayLabel(r.starts_on))}</b><br>
+            <span class="badge ${r.status === 'in force' ? 'green' : r.status === 'scheduled' ? 'amber' : ''}">${
+              r.status === 'scheduled' ? 'set ahead' : r.status}</span>` },
+        { key: 'ends_before', label: 'Held until', render: (r) => (r.ends_before
+            ? esc(dayLabel(dayBefore(r.ends_before))) : r.status === 'scheduled' ? '—' : 'now') },
+        { key: 'name', label: 'Product', render: (r) => (r.alias ? `<b>${esc(r.alias)}</b><br>` : '')
+            + `<small>${esc(r.name)}</small>` },
+        { key: 'category', label: 'Category' },
+        { key: 'srp', label: 'SRP', num: 1, render: (r) => F(r.srp) },
+        { key: 'capital', label: 'Capital', num: 1, render: (r) => F(r.capital) },
+        { key: 'build', label: 'Build-up / sack', num: 1, render: (r) => F(r.build) },
+        { key: 'changes', label: 'What changed', render: (r) => (r.changes == null
+            ? '<small style="color:var(--ink-2)">first entry</small>'
+            : r.changes.length ? `<small>${r.changes.map(esc).join('<br>')}</small>`
+              : '<small style="color:var(--ink-3)">no figure changed</small>') },
+        { key: 'set_by', label: 'Set by', render: (r) => `<small>${esc(SOURCE[r.source] || r.source)}${
+            r.set_by ? `<br>${esc(r.set_by)}` : ''}${r.set_at
+            ? `<br>${esc(new Date(r.set_at).toLocaleString())}` : ''}</small>` },
+        { key: 'sale_lines', label: 'Used on', num: 1, render: (r) => `<small>${
+            Number(r.sale_lines) ? `${r.sale_lines} sale line${r.sale_lines === 1 ? '' : 's'} ·
+              ${Number(r.sold_qty).toLocaleString()} sold<br>${esc(r.first_sold || '')}${
+              r.last_sold && r.last_sold !== r.first_sold ? ` – ${esc(r.last_sold)}` : ''}` : 'no sales'}${
+            Number(r.order_lines) ? `<br>${r.order_lines} order${r.order_lines === 1 ? '' : 's'} ·
+              ${Number(r.ordered_qty).toLocaleString()} ordered` : ''}</small>` },
+      ])}`;
+  },
+
   // ================= URC Report (admin) =================
   // The Matrix Report shows the whole price flow, product by product, which is
   // the right tool for checking a price but the wrong one for filing with the
   // principal. This is the filing view: pick a period, read what each fund came
   // to across everything sold, print it. Same figures, one page, no digging.
   async urcreport() {
-    const [items, sales, purchases] = await Promise.all([
-      api.get('/api/items'), api.get('/api/sales'), api.get('/api/purchases')]);
+    const [items, sales, purchases, book] = await Promise.all([
+      api.get('/api/items'), api.get('/api/sales'), api.get('/api/purchases'), loadPriceBook()]);
     const N = (v) => (v == null || isNaN(Number(v))) ? null : Number(v);
 
     // default to the month in progress, so the page is useful before it is touched
@@ -2599,6 +2830,8 @@ const views = {
     // been sold off the shelf -- counting sales would report the wrong month and
     // miss anything bought but still in stock.
     const boughtQty = {};
+    // ...and line by line, each on its own order's month of prices
+    const boughtLines = [];
     (purchases || []).filter((pu) => !String(pu.status).toLowerCase().includes('cancel')
         && (!range.from || String(pu.order_date).slice(0, 10) >= range.from)
         && (!range.to || String(pu.order_date).slice(0, 10) <= range.to))
@@ -2606,29 +2839,35 @@ const views = {
         const it = items.find((i) => i.id === pu.item_id);
         if (!it) return;
         boughtQty[it.name] = (boughtQty[it.name] || 0) + (Number(pu.purchase_qty) || 0);
+        boughtLines.push({ name: it.name, qty: Number(pu.purchase_qty) || 0, date: pu.order_date });
       });
 
     // sacks sold per product, promo free goods excluded: they cost URC nothing
     // per sack and are claimed separately as free-goods claims
     const soldQty = {};
+    const soldLines = [];
     let promoQty = 0;
     inRange.forEach((s) => (s.items || []).forEach((it) => {
       if (it.promo) { promoQty += Number(it.qty) || 0; return; }
       soldQty[it.item] = (soldQty[it.item] || 0) + (Number(it.qty) || 0);
+      soldLines.push({ name: it.item, qty: Number(it.qty) || 0, date: s.date });
     }));
 
-    const tally = (keys, pick, source) => keys.map(([k, lab]) => {
-      let amount = 0, qty = 0, products = 0;
-      for (const [name, q] of Object.entries(source)) {
-        const rate = N(pick(byName[name], k));
-        if (rate == null || !q) continue;
-        amount += rate * q; qty += q; products += 1;
+    // each line at the rate of its own month; "rate per sack" is then the
+    // average actually earned, which moves if URC re-priced within the period
+    const tally = (keys, pick, lines) => keys.map(([k, lab]) => {
+      let amount = 0, qty = 0;
+      const prods = new Set();
+      for (const l of lines) {
+        const rate = N(pick(priceAt(book, byName[l.name], l.date), k));
+        if (rate == null || !l.qty) continue;
+        amount += rate * l.qty; qty += l.qty; prods.add(l.name);
       }
-      return { k, lab, amount, qty, products, rate: qty ? amount / qty : null };
+      return { k, lab, amount, qty, products: prods.size, rate: qty ? amount / qty : null };
     }).filter((r) => r.amount > 0);
 
-    const takenRows = tally(TAKEN, (i, k) => i?.price_breakdown?.discounts?.[k], boughtQty);
-    const carriedRows = tally(CARRIED, (i, k) => i?.price_breakdown?.dealer_build?.[k], soldQty);
+    const takenRows = tally(TAKEN, (i, k) => i?.price_breakdown?.discounts?.[k], boughtLines);
+    const carriedRows = tally(CARRIED, (i, k) => i?.price_breakdown?.dealer_build?.[k], soldLines);
     const bought = Object.values(boughtQty).reduce((a2, q) => a2 + q, 0);
     const sacks = Object.values(soldQty).reduce((a, q) => a + q, 0);
     const takenTotal = takenRows.reduce((a, r) => a + r.amount, 0);
@@ -2648,17 +2887,23 @@ const views = {
       : '<p class="empty">Nothing in this period carries these figures.</p>';
 
     // the per-product working, so any line above can be justified on the spot
-    const detailRows = Object.entries(soldQty)
-      .map(([name, q]) => ({ name, q, i: byName[name] }))
-      .filter((r) => r.i?.price_breakdown?.dealer_build)
-      .sort((a, b) => b.q - a.q);
+    const detailBy = {};
+    soldLines.forEach((l) => {
+      const p = priceAt(book, byName[l.name], l.date);
+      if (!p?.price_breakdown?.dealer_build) return;
+      const d = (detailBy[l.name] ??= { name: l.name, q: 0, t: {}, c: {} });
+      d.q += l.qty;
+      TAKEN.forEach(([k]) => { d.t[k] = (d.t[k] || 0) + (N(p.price_breakdown.discounts?.[k]) || 0) * l.qty; });
+      CARRIED.forEach(([k]) => { d.c[k] = (d.c[k] || 0) + (N(p.price_breakdown.dealer_build?.[k]) || 0) * l.qty; });
+    });
+    const detailRows = Object.values(detailBy).sort((a, b) => b.q - a.q);
     const detailCols = [
       { key: 'name', label: 'Product' },
       { key: 'q', label: 'Sacks', num: 1, render: (r) => Number(r.q).toLocaleString() },
       ...takenRows.map((f) => ({ key: 't_' + f.k, label: f.lab, num: 1,
-        render: (r) => fmt((N(r.i.price_breakdown.discounts?.[f.k]) || 0) * r.q) })),
+        render: (r) => fmt(r.t[f.k] || 0) })),
       ...carriedRows.map((f) => ({ key: 'c_' + f.k, label: f.lab, num: 1,
-        render: (r) => fmt((N(r.i.price_breakdown.dealer_build?.[f.k]) || 0) * r.q) })),
+        render: (r) => fmt(r.c[f.k] || 0) })),
     ];
 
     return `<h2>URC Report</h2>
@@ -3289,8 +3534,10 @@ const views = {
     window._fundRange = fRange; window._fundKey = fundKey;
 
     const itemById = Object.fromEntries((itemsFull || []).map((i) => [i.id, i]));
-    const rateOf = (it) => {
-      const v = it?.price_breakdown?.discounts?.[fundKey];
+    const fundBook = await loadPriceBook();
+    // an order's fund comes off at the rate in force on the day it was placed
+    const rateOf = (it, date) => {
+      const v = priceAt(fundBook, it, date)?.price_breakdown?.discounts?.[fundKey];
       return (v == null || isNaN(Number(v))) ? null : Number(v);
     };
     const inFundRange = (purchases || []).filter((pu) =>
@@ -3303,7 +3550,7 @@ const views = {
     inFundRange.forEach((pu) => {
       const it = itemById[pu.item_id];
       const qty = NNUM(pu.purchase_qty);
-      const rate = rateOf(it);
+      const rate = rateOf(it, pu.order_date);
       if (rate == null) {
         if (it) { fUnpriced.units += qty; fUnpriced.products.add(it.name); }
         return;

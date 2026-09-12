@@ -4,7 +4,7 @@ window._view = 'dashboard';
 
 // ---- role-based access: Purchases → Settings are admin-only ----5 211111222222223
 const ADMIN_VIEWS = ['matrix', 'urcreport', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
-  'monitoring', 'reports', 'settings', 'customers'];
+  'monitoring', 'reports', 'settings', 'customers', 'pricelog'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
 const OWNER_VIEWS = ['accounts', 'team', 'expenses'];
 const isOwner = () => {
@@ -14,7 +14,7 @@ const isOwner = () => {
 };
 // controls a non-admin never gets: history/money rewrites, pricing, stock, approvals
 const ADMIN_CONTROLS = '[data-editsale],[data-cancel],[data-delsale],[data-editpay],[data-delpay],'
-  + '[data-editorder],[data-deldr],[data-pricing],[data-approve],[data-usertoggle],[data-termset],'
+  + '[data-editorder],[data-deldr],[data-pricing],[data-approve],[data-usertoggle],[data-termset],[data-pmundo],'
   + '[data-poadd],[data-podel],[data-podelso],[data-ponew],[data-crud-new],[data-crud-edit],[data-crud-del]';
 function applyRbacDom() {
   if (isAdmin()) return;
@@ -614,7 +614,8 @@ function wireSalesActions() {
     b.onclick = () => runPrintDR(Number(b.dataset.printdr)));
   document.querySelectorAll('[data-markdel]').forEach((b) => b.onclick = async () => {
     // receiver signs on-screen; the background-less signature affixes onto the DR
-    const r = await openSignPad({ title: 'Mark delivered — receiver signs here' });
+    const r = await openSignPad({ title: 'Mark delivered — receiver signs here',
+      suggest: [b.dataset.markdelcust || ''] });
     if (!r) return;
     try {
       await api.put(`/api/deliveries/${b.dataset.markdel}`, {
@@ -663,7 +664,8 @@ function wireSalesActions() {
     form.dataset.signature = d.signature || '';
     renderSig();
     document.getElementById('drSigCapture').onclick = async () => {
-      const r = await openSignPad({ title: `Signature — DR ${d.dr_no}`, name: form.received_by.value });
+      const r = await openSignPad({ title: `Signature — DR ${d.dr_no}`, name: form.received_by.value,
+        suggest: [d.customer || ''] });
       if (!r) return;
       if (r.name) form.received_by.value = r.name;
       if (r.signature) form.dataset.signature = r.signature;
@@ -831,23 +833,85 @@ function wireSalesActions() {
 
 // ---- e-signature pad: draws on a transparent canvas → background-less PNG ----
 // (the white box is CSS-only; the exported image contains just the ink)
-function openSignPad({ title = 'Receive & sign', askName = true, name = '' } = {}) {
+// `doc` lets a print preview open the pad inside its own document -- the preview
+// is an iframe on the apps and a separate window in a browser, and a pad opened
+// in the app behind it would be out of reach. That document has none of the
+// app's stylesheet, so the pad brings the few rules it needs.
+const SIGN_PAD_CSS = `
+  #signModal { position: fixed; inset: 0; background: rgba(16,24,40,.45); z-index: 10000;
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+    font: 14px "Segoe UI", Arial, sans-serif; color: #1a2433; }
+  #signModal .modal-box { background: #fff; border-radius: 14px; max-height: 92vh;
+    box-shadow: 0 12px 40px rgba(0,0,0,.25); display: flex; flex-direction: column; }
+  #signModal .modal-head { display: flex; gap: 10px; align-items: center; padding: 14px 16px;
+    border-bottom: 1px solid #dde3ea; }
+  #signModal h3 { font-size: 16px; }
+  #signModal label { display: flex; flex-direction: column; gap: 4px; font-size: 12.5px;
+    font-weight: 600; color: #4a5568; }
+  #signModal input { font: inherit; padding: 9px 10px; border: 1px solid #c3ccd6; border-radius: 8px; }
+  #signModal button { font: inherit; cursor: pointer; border-radius: 8px; }
+  #signModal button.mini { border: 1px solid #c3ccd6; background: #fff; padding: 7px 12px; color: #4a5568; }
+  #signModal button.primary { background: #1e5c28; color: #fff; border: 0; padding: 10px 22px;
+    font-weight: 600; }
+  #signModal .modal-body { overflow-y: auto; }`;
+// The names a signer can be picked from instead of typed. Staff: login accounts
+// and sales reps (who may not have an account). Customers are on the books by
+// store or farm, so the people who sign for them come from what the system has
+// learned (see /api/signer_names). Kept two minutes, and reloaded straight after
+// a name is added, so a new name shows up on the next pad.
+let _signerNames = null, _signerNamesAt = 0;
+function loadSignerNames() {
+  if (_signerNames && Date.now() - _signerNamesAt < 120000) return _signerNames;
+  _signerNamesAt = Date.now();
+  const uniq = (arr) => [...new Map(arr.map((n) => String(n || '').trim()).filter(Boolean)
+    .map((n) => [n.toUpperCase(), n])).values()].sort((a, b) => a.localeCompare(b));
+  _signerNames = api.get('/api/signer_names')
+    // a server not yet updated has no list of people: staff and store names only
+    .catch(() => Promise.all([
+      api.get('/api/login_users').catch(() => []),
+      api.get('/api/sales_reps').catch(() => []),
+      api.get('/api/customers').catch(() => []),
+    ]).then(([users, reps, custs]) => ({
+      staff: [...users, ...reps].map((x) => x.name), customer: [], stores: custs.map((c) => c.name) })))
+    .then((l) => ({
+      staff: uniq(l.staff || []),
+      customer: (l.customer || []).filter((p) => p && String(p.name || '').trim()),
+      stores: uniq(l.stores || []),
+    }));
+  return _signerNames;
+}
+// who:     whose names are listed -- 'customer' (a receiver, a payer) or 'staff'
+// suggest: the customer this signature is for: their people are listed first,
+//          and a name added from the pad is kept against them
+function openSignPad({ title = 'Receive & sign', askName = true, name = '',
+  nameLabel = 'Received by (printed name)', doc = document,
+  who = 'customer', suggest = [] } = {}) {
   return new Promise((resolve) => {
-    document.getElementById('signModal')?.remove();
-    const modal = document.createElement('div');
+    if (doc !== document && !doc.getElementById('signPadStyle')) {
+      const st = doc.createElement('style');
+      st.id = 'signPadStyle';
+      st.textContent = SIGN_PAD_CSS;
+      doc.head.appendChild(st);
+    }
+    doc.getElementById('signModal')?.remove();
+    const modal = doc.createElement('div');
     modal.id = 'signModal';
     modal.className = 'modal';
+    const attr = (v) => String(v || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
     modal.innerHTML = `
       <div class="modal-box" style="width:min(560px,96%)">
         <div class="modal-head"><h3 style="margin:0;flex:1">${title}</h3>
           <button type="button" class="mini" id="signClose">Cancel</button></div>
         <div class="modal-body" style="padding:16px">
-          ${askName ? `<label style="margin-bottom:10px">Received by (printed name)
-            <input id="signName" value="${(name || '').replace(/"/g, '&quot;')}" autocomplete="off"></label>` : ''}
-          <div style="font-size:12.5px;color:var(--ink-2);font-weight:600;margin:8px 0 4px">
+          ${askName ? `<label style="margin-bottom:4px">${nameLabel}
+            <input id="signName" value="${attr(name)}" autocomplete="off"
+              placeholder="type, or pick a name below"></label>
+            <div id="signNames" style="max-height:132px;overflow-y:auto;display:flex;flex-wrap:wrap;
+              gap:6px;align-content:flex-start;margin:4px 0 6px"></div>` : ''}
+          <div style="font-size:12.5px;color:var(--ink-2, #4a5568);font-weight:600;margin:8px 0 4px">
             Signature — sign inside the box (finger, stylus, or mouse)</div>
           <canvas id="signPad" width="1000" height="360"
-            style="width:100%;height:180px;border:1.5px dashed var(--border-strong);border-radius:8px;
+            style="width:100%;height:180px;border:1.5px dashed var(--border-strong, #c3ccd6);border-radius:8px;
                    background:#fff;touch-action:none;cursor:crosshair"></canvas>
           <div style="display:flex;gap:8px;margin-top:10px">
             <button type="button" class="mini" id="signClear">Clear</button>
@@ -856,8 +920,8 @@ function openSignPad({ title = 'Receive & sign', askName = true, name = '' } = {
           </div>
         </div>
       </div>`;
-    document.body.appendChild(modal);
-    const canvas = document.getElementById('signPad');
+    doc.body.appendChild(modal);
+    const canvas = doc.getElementById('signPad');
     const ctx = canvas.getContext('2d');
     ctx.lineWidth = 5; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#14203a';
     let drawing = false, drew = false;
@@ -874,12 +938,92 @@ function openSignPad({ title = 'Receive & sign', askName = true, name = '' } = {
     };
     canvas.onpointermove = (e) => { if (!drawing) return; const p = pos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
     canvas.onpointerup = () => { drawing = false; };
+    // ---- the name picker ----
+    // A staff line lists employees only; a customer line lists customers only --
+    // the people who sign for this customer first, then other customers' people,
+    // then the store and farm names. A pre-filled or picked name never narrows the
+    // list; only typing does. A typed name not on file can be added, so every
+    // device offers it next time.
+    const nameBox = doc.getElementById('signNames');
+    const nameIn = doc.getElementById('signName');
+    if (nameBox && nameIn) {
+      let lists = null, typed = false, note = '';
+      const store = String(suggest.find((s) => s && String(s).trim()) || '').trim();
+      const same = (a, b) => String(a || '').trim().toUpperCase() === String(b || '').trim().toUpperCase();
+      const chip = (n, sub = '') => {
+        const on = same(n, nameIn.value);
+        return `<button type="button" data-signpick="${attr(n)}" style="border:1px solid ${on ? '#1e5c28' : '#c3ccd6'};
+          background:${on ? '#e6f2e8' : '#f5f7f9'};border-radius:999px;padding:5px 11px;font:inherit;
+          font-size:12.5px;color:#1a2433;cursor:pointer">${attr(n)}${sub
+            ? `<span style="color:#8a94a3;font-size:11px"> · ${attr(sub)}</span>` : ''}</button>`;
+      };
+      const head = (t) => `<div style="flex-basis:100%;font-size:10.5px;font-weight:700;color:#8a94a3;
+        text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${attr(t)}</div>`;
+      // a long book stays light: the first 40 of a section, and typing narrows it
+      const section = (label, items, withStore = false) => (items.length
+        ? head(label) + items.slice(0, 40).map((x) => (typeof x === 'string'
+          ? chip(x) : chip(x.name, withStore ? x.store : ''))).join('')
+          + (items.length > 40 ? `<small style="color:#8a94a3;align-self:center">+${items.length - 40} more — keep typing</small>` : '')
+        : '');
+      const addButton = (n) => `<button type="button" data-signadd="${attr(n)}" style="border:1.5px dashed #1e5c28;
+        background:#fff;color:#1e5c28;border-radius:999px;padding:5px 12px;font:inherit;font-size:12.5px;
+        font-weight:700;cursor:pointer">+ Add “${attr(n)}” ${who === 'staff' ? 'to employees'
+          : store ? `to ${attr(store)}` : 'to customers'}</button>`;
+      const renderNames = () => {
+        if (!lists) { nameBox.innerHTML = '<small style="color:#8a94a3">Loading names…</small>'; return; }
+        const val = nameIn.value.trim();
+        const ql = typed ? val.toLowerCase() : '';
+        const hit = (n) => !ql || String(n).toLowerCase().includes(ql);
+        let html = note ? `<div style="flex-basis:100%;font-size:12px;font-weight:600;
+          color:${note.startsWith('✓') ? '#1e5c28' : '#b02020'}">${attr(note)}</div>` : '';
+        const known = who === 'staff' ? lists.staff.some((n) => same(n, val))
+          : lists.customer.some((p) => same(p.name, val)) || lists.stores.some((n) => same(n, val));
+        if (typed && val && !known) html += addButton(val);
+        if (who === 'staff') {
+          html += section('Employees', lists.staff.filter(hit));
+        } else {
+          const mine = store ? lists.customer.filter((p) => same(p.store, store) && hit(p.name)) : [];
+          const rest = lists.customer.filter((p) => !(store && same(p.store, store)) && hit(p.name));
+          const stores = lists.stores.filter(hit)
+            .sort((a, b) => Number(same(b, store)) - Number(same(a, store)));
+          html += section(`People at ${store}`, mine)
+            + section(store ? 'Other customers' : 'Customers', rest, true)
+            + section('Store / farm names', stores);
+        }
+        nameBox.innerHTML = html || `<small style="color:#8a94a3">${who === 'staff'
+          ? 'No employees on file.' : 'No names on file yet — type the person’s name, then tap “Add”.'}</small>`;
+      };
+      nameBox.onclick = async (e) => {
+        const t = e.target;
+        const pick = t.closest && t.closest('[data-signpick]');
+        if (pick) { nameIn.value = pick.dataset.signpick; typed = false; note = ''; renderNames(); return; }
+        const add = t.closest && t.closest('[data-signadd]');
+        if (!add || add.disabled) return;
+        const n = add.dataset.signadd;
+        add.disabled = true; add.textContent = 'Adding…';
+        try {
+          await api.post('/api/signer_names',
+            { name: n, kind: who, customer: who === 'customer' ? (store || null) : null });
+          if (who === 'staff') lists.staff.push(n); else lists.customer.push({ name: n, store: store || null });
+          _signerNamesAt = 0;                         // the next pad reloads the list
+          note = `✓ “${n}” added — it will be offered next time.`;
+        } catch (err) {
+          note = `Could not add “${n}”: ${err.message}. You can still sign with the name as typed.`;
+        }
+        typed = false;
+        renderNames();
+      };
+      nameIn.addEventListener('input', () => { typed = true; note = ''; renderNames(); });
+      renderNames();
+      loadSignerNames().then((l) => { lists = l; renderNames(); })
+        .catch(() => { nameBox.innerHTML = ''; });   // no list, the field still types
+    }
     const close = (val) => { modal.remove(); resolve(val); };
     modal.onclick = (e) => { if (e.target === modal) close(null); };
-    document.getElementById('signClear').onclick = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); drew = false; };
-    document.getElementById('signClose').onclick = () => close(null);
-    document.getElementById('signSave').onclick = () => close({
-      name: askName ? document.getElementById('signName').value.trim() : null,
+    doc.getElementById('signClear').onclick = () => { ctx.clearRect(0, 0, canvas.width, canvas.height); drew = false; };
+    doc.getElementById('signClose').onclick = () => close(null);
+    doc.getElementById('signSave').onclick = () => close({
+      name: askName ? doc.getElementById('signName').value.trim() : null,
       signature: drew ? canvas.toDataURL('image/png') : null,   // transparent PNG
     });
   });
@@ -1035,7 +1179,8 @@ function wireCisForm() {
     document.querySelectorAll('[data-specsign]').forEach((b) => b.onclick = async () => {
       const i = Number(b.dataset.specsign);
       const r = await openSignPad({ title: `Signature specimen ${i + 1}`, askName: true,
-        name: window._cisSpec[i].name || '' });
+        name: window._cisSpec[i].name || '',
+        suggest: [document.querySelector('#cisForm [name=account_name]')?.value || ''] });
       if (!r) return;
       if (r.name) window._cisSpec[i].name = r.name;
       if (r.signature) window._cisSpec[i].signature = r.signature;
@@ -1053,7 +1198,8 @@ function wireCisForm() {
     const sign = document.getElementById('cisCertSign');
     if (sign) sign.onclick = async () => {
       const r = await openSignPad({ title: 'Customer’s signature over printed name',
-        askName: true, name: form.certified_name.value || '' });
+        askName: true, name: form.certified_name.value || '',
+        suggest: [document.querySelector('#cisForm [name=account_name]')?.value || ''] });
       if (!r) return;
       if (r.name) form.certified_name.value = r.name;
       window._cisCertSig = r.signature || null;
@@ -1261,6 +1407,41 @@ function wire(view) {
       document.querySelectorAll('[data-promoline]').forEach((b) =>
         b.onclick = () => applyPromo(lines[Number(b.dataset.promoline)].item_id));
     };
+    // ---- a sale is priced on the prices in force on its own date ----
+    // Encoding an August sale in September must use August's SRP, rates and per-bag
+    // discounts. A saved invoice being edited keeps the prices it was made with.
+    const saleDateIn = document.querySelector('#saleForm [name=date]');
+    const baseItems = new Map(window._saleData.items.map((i) => [i.id, { ...i }]));
+    let pricedFor = null, book = null;
+    const priceForDate = async () => {
+      if (window._editSale) return;
+      const d = saleDateIn && saleDateIn.value;
+      if (!d || d === pricedFor) return;
+      pricedFor = d;
+      if (!book) book = await loadPriceBook();
+      window._saleData.items.forEach((it) => {
+        const base = baseItems.get(it.id);
+        const p = priceAt(book, base, d);
+        ['sales_price', 'cost', 'outright_rate', 'cod_rate', 'cod_discount', 'term_discount', 'deal']
+          .forEach((f) => { it[f] = p[f]; });
+        it.dealer_deal = p.price_breakdown?.dealer_deal ?? base.dealer_deal;
+      });
+      repriceLines();
+      renderLines();
+      // say which price list a back-dated (or forward-dated) sale is using
+      const note = document.getElementById('priceMonthNote');
+      if (note) {
+        const since = [...baseItems.values()].reduce((acc, it) => {
+          const list = (book[it.id] || []).filter((r) => r.starts_on <= d);
+          const s = list.length ? list[list.length - 1].starts_on : null;
+          return s && (!acc || s > acc) ? s : acc;
+        }, null);
+        note.textContent = d === todayLocal() || !since ? ''
+          : `Priced on the prices in force on ${dayLabel(d)} (latest change ${dayLabel(since)})`;
+      }
+    };
+    if (saleDateIn) saleDateIn.addEventListener('change', priceForDate);
+    priceForDate();
     // ---- item picker modal: search, see details, add many without closing ----
     const modal = document.getElementById('pickerModal');
     const renderPicker = (q = '') => {
@@ -2625,6 +2806,17 @@ function pricingModel(item) {
   return 'feeds';
 }
 
+// Pricing saves land on the start date being priced on the Inventory page. On
+// every other page, and for today, they go on the item itself -- which the server
+// also keeps in the Price Log as starting today.
+function pricingMonth() {
+  return window._view === 'inventory' && typeof editingPriceMonth === 'function' ? editingPriceMonth() : null;
+}
+function savePricing(id, patch) {
+  const m = pricingMonth();
+  return m ? api.put(`/api/item_price_months/${m}/${id}`, patch) : api.put(`/api/items/${id}`, patch);
+}
+
 function openPricingEditor(id) {
   // items come from whichever page is active: Inventory's CRUD rows, or the
   // Inventory Dashboard's merged records (full breakdowns) when editing there
@@ -2639,7 +2831,8 @@ function openPricingEditor(id) {
   const model = pricingModel(item);
   const modal = document.getElementById('priceModal');
   const body = document.getElementById('priceModalBody');
-  document.getElementById('priceModalTitle').textContent = `${item.name} — pricing (${model})`;
+  document.getElementById('priceModalTitle').textContent = `${item.name} — pricing (${model})`
+    + (pricingMonth() ? ` — prices from ${dayLabel(pricingMonth())}` : '');
   const F = (id_, label, val, step = 'any') =>
     `<label>${label} <input type="number" step="${step}" id="${id_}" value="${val ?? ''}"></label>`;
 
@@ -2648,7 +2841,7 @@ function openPricingEditor(id) {
     const sub = b.model || 'standard';
     const finishSave = async (capital, srp, patch) => {
       try {
-        await api.put(`/api/items/${id}`, {
+        await savePricing(id, {
           cost: Math.round(capital * 10000) / 10000,
           sales_price: srp != null ? Math.round(srp * 10000) / 10000 : null,
           price_breakdown: { ...b, ...patch },
@@ -2821,7 +3014,7 @@ function openPricingEditor(id) {
         else dealer_build[k] = Number(v);
       });
       try {
-        await api.put(`/api/items/${id}`, {
+        await savePricing(id, {
           cost: Math.round(capital * 10000) / 10000,
           price_breakdown: { ...b, ex_plant: Number(pEx.value), discounts,
             pbd_rate: Number(pPbd.value), vat: isPets && pVat.checked ? 'add_12' : 'none',
@@ -2839,6 +3032,98 @@ function openPricingEditor(id) {
 document.addEventListener('click', (e) => {
   const b = e.target.closest && e.target.closest('[data-pricing]');
   if (b) openPricingEditor(Number(b.dataset.pricing));
+});
+
+// ---- the Inventory page's price start date ----
+document.addEventListener('change', (e) => {
+  if (e.target.id !== 'pmMonth') return;
+  window._priceMonth = e.target.value || null;
+  show('inventory');
+});
+document.addEventListener('click', async (e) => {
+  const nav = e.target.closest && e.target.closest('[data-view-go]');
+  if (nav) { show(nav.dataset.viewGo); return; }
+  // Price Log filters
+  const plc = e.target.closest && e.target.closest('[data-plcat]');
+  if (plc) { window._plCat = plc.dataset.plcat; show('pricelog'); return; }
+  const pls = e.target.closest && e.target.closest('[data-plst]');
+  if (pls) { window._plStatus = pls.dataset.plst; show('pricelog'); return; }
+  const go = e.target.closest && e.target.closest('[data-pmgo]');
+  if (go) {
+    const d = new Date();
+    d.setMonth(d.getMonth() + 1, 1);
+    window._priceMonth = go.dataset.pmgo === 'this' ? null : d.toLocaleDateString('en-CA');
+    show('inventory');
+    return;
+  }
+  const undo = e.target.closest && e.target.closest('[data-pmundo]');
+  if (!undo) return;
+  const d = editingPriceMonth();
+  if (!d || !confirm(`Take back the prices starting ${dayLabel(d)} for this item?\n\n`
+    + 'Those days will fall back on the prices in force before.')) return;
+  try { await api.del(`/api/item_price_months/${d}/${undo.dataset.pmundo}`); show('inventory'); }
+  catch (err) { alert('Error: ' + err.message); }
+});
+
+// ---- payment accounts: add one where it is needed ----
+// Cash, GCash and the banks are rows in the accounts table, not code: a new one
+// (GoTyme Bank, say) is added from the Accounts page or straight from any
+// payment-account picker, and every picker has it at once. Owners only, as the
+// server requires.
+const ADD_ACCT = '__add_account__';
+async function addPaymentAccount(name, opening = 0) {
+  const nm = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!nm) return null;
+  const existing = await api.get('/api/accounts').catch(() => []);
+  const dup = existing.find((a) => String(a.name).trim().toUpperCase() === nm.toUpperCase());
+  if (dup) return { ...dup, existing: true };
+  return api.post('/api/accounts', { name: nm, beginning_balance: Number(opening) || 0 });
+}
+document.addEventListener('focusin', (e) => {
+  const sel = e.target;
+  if (!(sel instanceof HTMLSelectElement) || sel.name !== 'account_id' || !isOwner()) return;
+  if (!sel.querySelector(`option[value="${ADD_ACCT}"]`)) {
+    const o = document.createElement('option');
+    o.value = ADD_ACCT;
+    o.textContent = '+ Add a new account…';
+    sel.appendChild(o);
+  }
+  sel.dataset.prev = sel.value;
+});
+document.addEventListener('change', async (e) => {
+  const sel = e.target;
+  if (!(sel instanceof HTMLSelectElement) || sel.value !== ADD_ACCT) return;
+  const back = () => { sel.value = sel.dataset.prev || ''; };
+  const name = prompt('Name of the new payment account (e.g. GoTyme Bank):', '');
+  if (!name || !name.trim()) { back(); return; }
+  try {
+    const a = await addPaymentAccount(name);
+    document.querySelectorAll('select[name="account_id"]').forEach((s) => {
+      if ([...s.options].some((o) => o.value === String(a.id))) return;
+      const o = document.createElement('option');
+      o.value = String(a.id);
+      o.textContent = a.name;
+      s.insertBefore(o, s.querySelector(`option[value="${ADD_ACCT}"]`));
+    });
+    sel.value = String(a.id);
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    if (a.existing) alert(`"${a.name}" is already an account — it has been selected.`);
+  } catch (err) {
+    alert('Could not add the account: ' + err.message);
+    back();
+  }
+});
+document.addEventListener('submit', async (e) => {
+  if (e.target.id !== 'acctAddForm') return;
+  e.preventDefault();
+  const f = e.target;
+  try {
+    const a = await addPaymentAccount(f.elements.namedItem('acct_name').value,
+      f.elements.namedItem('acct_opening').value);
+    if (!a) return;
+    if (a.existing) alert(`"${a.name}" is already on file.`);
+    show('accounts');
+  } catch (err) { alert('Could not add the account: ' + err.message); }
 });
 
 // Open a small modal to register a condition adjustment (Opened / Damaged)
