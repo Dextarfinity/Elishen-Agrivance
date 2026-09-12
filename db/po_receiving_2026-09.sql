@@ -1,20 +1,22 @@
--- Paid URC sales orders, and what actually came.
+-- Paid URC sales orders, and the delivery that came on 2026-09-12.
 --
 -- Source: PO1.pdf-PO5.pdf (twelve paid sales orders) and the two pickup lists
--- delivered-po1.jpg (ACI) and delivered-po2.jpg (MMFI); hand-written figures on
--- those lists are the quantities that arrived. The same data wrote
--- "PO Delivery Status - Sep 2026.xlsx".
+-- delivered-po1.jpg (ACI) and delivered-po2.jpg (MMFI) -- the 2026-09-12
+-- delivery; hand-written figures on those lists are the quantities that
+-- arrived. The same data wrote "PO Delivery Status - Sep 2026.xlsx".
 --
 -- What it does, per sales-order line:
 --   purchase_qty = what the SO says was ordered and paid for
 --   received_qty = what arrived  -> this is what stock on hand counts
 --   status       = Received (all came) / Partial (some) / Ordered (none yet)
--- A sales order never keyed in is added. One already on the books has its lines
--- brought to match -- that includes SO 1890267771 and SO 1890267773, which the
--- earlier backfill booked as fully received but which have not arrived.
+-- A sales order never keyed in is added. On one already on the books, lines in
+-- this delivery are brought to match; lines NOT in it are left exactly as
+-- recorded, because missing from one delivery is not proof they never came.
+-- July's SO 1890267771 and SO 1890267773 are not in this file at all: the
+-- earlier backfill has them, and nothing of them came on 2026-09-12.
 --
 -- Stock needs nothing more: on hand = initial + received_qty + adjustments - sold,
--- so correcting received_qty corrects the count, and nothing is counted twice.
+-- so recording received_qty records the count, and nothing is counted twice.
 --
 -- Safe to run more than once, and on either database. Items are matched by name;
 -- a line that does not match exactly one product aborts the whole file before
@@ -42,20 +44,16 @@ INSERT INTO rcv_line (so_no, so_date, urc_code, descr, where_sql, qty, came, gro
   ('SO 1890279971', DATE '2026-09-07', '821792', 'TopCare Cat Litter Coffee 10L x 3 PC', 'name ILIKE ''%LITTER%'' AND name ILIKE ''%Coffee%''', 20, 20, 555.00, 510.72, 'Pickup 2026-09-12: 20 of 20 came (ACI)'),
   ('SO 1890279972', DATE '2026-09-07', '878433', 'TopBreed Creamy Treats Tuna 12g x 4Stick (CAR)', 'name ILIKE ''%Creamy Treats%''', 3, 3, 3238.00, 3138.80, 'Pickup 2026-09-12: 3 of 3 came (ACI)'),
   ('SO 1890276777', DATE '2026-08-19', '873353', 'Supremo Infinity 2.1 Pel & Grains 50Kg', 'name ILIKE ''%Infinity 2.1%'' AND name ILIKE ''%50KG%''', 150, 150, 2070.00, 1720.48, 'Pickup 2026-09-12: 150 of 150 came (MMFI), picked up as re-approved SO 1890279848'),
-  ('SO 1890276777', DATE '2026-08-19', '873360', 'Supremo Infinity 3 (Mp) 50Kg/B', 'name ILIKE ''%Infinity 3%'' AND name ILIKE ''%50KG%'' AND name NOT ILIKE ''%Grain%''', 50, 0, 1800.00, 1496.07, 'Pickup 2026-09-12: not delivered yet'),
+  ('SO 1890276777', DATE '2026-08-19', '873360', 'Supremo Infinity 3 (Mp) 50Kg/B', 'name ILIKE ''%Infinity 3%'' AND name ILIKE ''%50KG%'' AND name NOT ILIKE ''%Grain%''', 50, 0, 1800.00, 1496.07, 'Pickup 2026-09-12: not in this delivery, still on order'),
   ('SO 1890276777', DATE '2026-08-19', '872300', 'Supremo Infinity Ready Mix Pel Red 25kg', 'name ILIKE ''%Ready Mix%'' AND name ILIKE ''%Pellets%'' AND name ILIKE ''%25%''', 50, 50, 1025.00, 851.93, 'Pickup 2026-09-12: 50 of 50 came (MMFI)'),
   ('SO 1890276777', DATE '2026-08-19', '871140', 'Supremo Infinity 2.1 (MP) 25x1kg', 'name ILIKE ''%Infinity 2.1%'' AND name ILIKE ''%25%''', 80, 79, 1105.00, 918.42, 'Pickup 2026-09-12: 79 of 80 came (ACI), picked up as re-approved SO 1890279848'),
   ('SO 1890276779', DATE '2026-08-19', '878160', 'Topbreed Puppy Meal 20Kg/B', 'name ILIKE ''%Puppy%'' AND name ILIKE ''%20KG%''', 10, 10, 1705.00, 1605.78, 'Pickup 2026-09-12: 10 of 10 came (ACI), picked up as re-approved SO 1890279849'),
   ('SO 1890276779', DATE '2026-08-19', '878140', 'Topbreed Adult Meal 20Kg/B', 'name ILIKE ''%Dog Adult%'' AND name ILIKE ''%20KG%'' AND name NOT ILIKE ''%Mini%''', 20, 20, 1455.00, 1370.33, 'Pickup 2026-09-12: 20 of 20 came (ACI), picked up as re-approved SO 1890279849'),
-  ('SO 1890276779', DATE '2026-08-19', '878960', 'TopBreed Cat Meal 20kg', 'name ILIKE ''%Cat Adult%'' AND name ILIKE ''%20KG%''', 15, 0, 2069.51, 1949.08, 'Pickup 2026-09-12: not delivered yet'),
-  ('SO 1890276783', DATE '2026-08-19', '879024', 'TopBreed Gravy Chunks RBL 130g (BOX)', 'name ILIKE ''%Gravy Chunks%''', 10, 0, 1285.00, 1060.81, 'Pickup 2026-09-12: not delivered yet'),
-  ('SO 1890276783', DATE '2026-08-19', '879025', 'TopBreed Gravy Chunks CLS 130g (BOX)', 'name ILIKE ''%Gravy Chunks%''', 10, 0, 1285.00, 1060.81, 'Pickup 2026-09-12: not delivered yet'),
+  ('SO 1890276779', DATE '2026-08-19', '878960', 'TopBreed Cat Meal 20kg', 'name ILIKE ''%Cat Adult%'' AND name ILIKE ''%20KG%''', 15, 0, 2069.51, 1949.08, 'Pickup 2026-09-12: not in this delivery, still on order'),
+  ('SO 1890276783', DATE '2026-08-19', '879024', 'TopBreed Gravy Chunks RBL 130g (BOX)', 'name ILIKE ''%Gravy Chunks%''', 10, 0, 1285.00, 1060.81, 'Pickup 2026-09-12: not in this delivery, still on order'),
+  ('SO 1890276783', DATE '2026-08-19', '879025', 'TopBreed Gravy Chunks CLS 130g (BOX)', 'name ILIKE ''%Gravy Chunks%''', 10, 0, 1285.00, 1060.81, 'Pickup 2026-09-12: not in this delivery, still on order'),
   ('SO 1890280005', DATE '2026-09-07', '878140', 'Topbreed Adult Meal 20Kg/B', 'name ILIKE ''%Dog Adult%'' AND name ILIKE ''%20KG%'' AND name NOT ILIKE ''%Mini%''', 30, 30, 1455.00, 1338.51, 'Pickup 2026-09-12: 30 of 30 came (ACI)'),
-  ('SO 1890279850', DATE '2026-09-07', '878433', 'TopBreed Creamy Treats Tuna 12g x 4Stick (CAR)', 'name ILIKE ''%Creamy Treats%''', 20, 20, 3238.00, 3138.80, 'Pickup 2026-09-12: 20 of 20 came (ACI)'),
-  ('SO 1890267771', DATE '2026-07-01', '874770', 'Uno+ Supreme Lactating Pellet 50Kg/B', 'name ILIKE ''%Supreme Lactating%''', 10, 0, 1975.00, 1737.64, 'Pickup 2026-09-12: not delivered yet'),
-  ('SO 1890267771', DATE '2026-07-01', '874720', 'Uno+ Premium Breeder Pellet 50kg/B', 'name ILIKE ''%UNO+ Breeder%''', 10, 0, 1805.00, 1588.07, 'Pickup 2026-09-12: not delivered yet'),
-  ('SO 1890267771', DATE '2026-07-01', '874670', 'Star Gain Starter Pellet 50Kg/B', 'name ILIKE ''%Stargain Starter%''', 10, 0, 1905.00, 1676.05, 'Pickup 2026-09-12: not delivered yet'),
-  ('SO 1890267773', DATE '2026-07-01', '872300', 'Supremo Infinity Ready Mix Pel Red 25kg', 'name ILIKE ''%Ready Mix%'' AND name ILIKE ''%Pellets%'' AND name ILIKE ''%25%''', 10, 0, 1025.00, 852.63, 'Pickup 2026-09-12: not delivered yet');
+  ('SO 1890279850', DATE '2026-09-07', '878433', 'TopBreed Creamy Treats Tuna 12g x 4Stick (CAR)', 'name ILIKE ''%Creamy Treats%''', 20, 20, 3238.00, 3138.80, 'Pickup 2026-09-12: 20 of 20 came (ACI)');
 
 -- ---- resolve every line to exactly one product ----
 DROP TABLE IF EXISTS rcv;
@@ -125,6 +123,12 @@ BEGIN
   LOOP
     SELECT count(*) INTO n_rows FROM purchases
      WHERE ref_id = g.so_no AND item_id = g.item_id AND status NOT ILIKE '%cancel%';
+    -- not in the 2026-09-12 delivery, but already on the books: it may well
+    -- have come in an earlier one, so what is recorded stands
+    IF n_rows > 0 AND g.came_max = 0 THEN
+      RAISE NOTICE 'left as recorded (not in the 2026-09-12 delivery): % %', g.so_no, g.codes;
+      CONTINUE;
+    END IF;
     IF n_rows = 0 THEN
       INSERT INTO purchases (order_date, received_date, ref_id, item_id, purchase_qty, received_qty,
                              unit_cost, status, vendor_id, notes)
