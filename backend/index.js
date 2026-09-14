@@ -553,6 +553,16 @@ app.use('/api', (req, res, next) => {
 });
 // ---------- audit trail: every mutating action is recorded with who did it ----------
 app.use('/api', (req, res, next) => {
+  if (!req._auth) return next();
+  rolesOf(req._auth.name).then((roles) => {
+    req._isAdmin = roles.admin;
+    req._isOwner = roles.owner
+      || String(req._auth.name || '').trim().toLowerCase() === 'glomer celestino';
+    next();
+  }).catch((e) => res.status(500).json({ error: e.message }));
+});
+// ---------- audit trail: every mutating action is recorded with who did it ----------
+app.use('/api', (req, res, next) => {
   if (['POST', 'PUT', 'DELETE'].includes(req.method)
       && !req.path.startsWith('/login') && !req.path.startsWith('/notifications')) {
     const user = req._auth?.name || 'unknown';
@@ -570,16 +580,21 @@ app.use('/api', (req, res, next) => {
 });
 // ---------- RBAC gate (after audit, so refused attempts are on record too) ----------
 app.use('/api', (req, res, next) => {
-  if (!['POST', 'PUT', 'DELETE'].includes(req.method) || req.path.startsWith('/login')) return next();
+  const mutating = ['POST', 'PUT', 'DELETE'].includes(req.method);
+  const userAdminResource = /^\/users(?:\/|$)/.test(req.path);
+  if ((!mutating && !userAdminResource) || req.path.startsWith('/login')) return next();
   (async () => {
     const name = req._auth?.name || '';
     const roles = await rolesOf(name);
     req._isAdmin = roles.admin;
+    if (userAdminResource && !req._isAdmin) {
+      return res.status(403).json({ error: 'Only Admin accounts can manage users and roles.' });
+    }
     // allow Owner-role users, or the special-case user Glomer Celestino
     const isGlomer = String(name || '').trim().toLowerCase() === 'glomer celestino';
-    if (OWNER_ONLY_API.test(req.path) && !(roles.owner || isGlomer)) {
+    if (OWNER_ONLY_API.test(req.path) && !(roles.admin || roles.owner || isGlomer)) {
       return res.status(403).json({
-        error: 'Owners only — this money operation is restricted to Owner accounts.' });
+        error: 'This money operation needs an Admin or Owner account.' });
     }
     if (req._isAdmin) { maybeNotify(req, name || 'Admin'); return next(); }
     const ok = NON_ADMIN_ALLOWED.some(([m, p]) => m.test(req.method) && p.test(req.path));
@@ -2068,11 +2083,12 @@ app.post('/api/logout', wrap(async (req, res) => {
 }));
 app.post('/api/users', wrap(async (req, res) => {
   const { name, roles, pin, active, daily_rate } = req.body;
-  if (!name || !roles) return res.status(400).json({ error: 'name and roles required' });
+  if (!name || !roles || !pin) return res.status(400).json({ error: 'name, roles, and PIN are required' });
+  if (String(pin).length < 4) return res.status(400).json({ error: 'PIN must be at least 4 digits.' });
   const { rows } = await q(
     `INSERT INTO users (name, roles, pin, active, daily_rate) VALUES ($1,$2,$3,$4,$5)
      RETURNING id, name, roles, active, daily_rate`,
-    [name, roles, hashPin(pin || '1234'), active ?? true, daily_rate ?? 0]);
+    [name, roles, hashPin(pin), active ?? true, daily_rate ?? 0]);
   // every employee can earn commissions — keep the commission roster in step
   await q(`INSERT INTO sales_reps (name, commission_rate)
            SELECT $1, 0 WHERE NOT EXISTS

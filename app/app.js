@@ -8,6 +8,7 @@ const ADMIN_VIEWS = ['matrix', 'urcreport', 'stocktake', 'purchases', 'expenses'
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
 const OWNER_VIEWS = ['accounts', 'team', 'expenses'];
 const isOwner = () => {
+  if (isAdmin()) return true;
   const roles = window._user?.roles || '';
   const name = (window._user?.name || '').trim();
   return /\bowner\b/i.test(roles) || /^\s*Glomer\s+Celestino\s*$/i.test(name);
@@ -743,6 +744,35 @@ function wireSalesActions() {
 
   // ---- CRUD on the URC-format SO blocks (live /api/purchases, no local copies) ----
   const poModal = document.getElementById('poModal'), poForm = document.getElementById('poForm');
+  const poItemModal = document.getElementById('poItemModal');
+  const poItemSelect = document.getElementById('poItemSelect');
+  const poItemOpen = document.getElementById('poItemOpen');
+  const poItemLabel = () => poItemSelect?.selectedOptions[0]?.textContent || 'Choose item';
+  const syncPoItem = () => { if (poItemOpen) poItemOpen.textContent = poItemLabel(); };
+  const closePoItem = () => poItemModal?.classList.add('hidden');
+  if (poItemModal && poItemSelect && poItemOpen && !poItemModal._wired) {
+    poItemModal._wired = true;
+    poItemOpen.onclick = () => {
+      poItemModal.classList.remove('hidden');
+      const search = document.getElementById('poItemSearch');
+      search.value = '';
+      document.querySelectorAll('[data-poitem]').forEach((b) => b.hidden = false);
+      search.focus();
+    };
+    document.getElementById('poItemClose').onclick = closePoItem;
+    poItemModal.onclick = (e) => { if (e.target === poItemModal) closePoItem(); };
+    document.getElementById('poItemSearch').oninput = (e) => {
+      const q = e.target.value.trim().toLowerCase();
+      document.querySelectorAll('[data-poitem]').forEach((b) => {
+        b.hidden = !b.dataset.label.toLowerCase().includes(q);
+      });
+    };
+    document.querySelectorAll('[data-poitem]').forEach((b) => b.onclick = () => {
+      poItemSelect.value = b.dataset.poitem;
+      syncPoItem();
+      closePoItem();
+    });
+  }
   const openPo = (title, vals) => {
     if (!poModal || !poForm) return;
     document.getElementById('poModalTitle').textContent = title;
@@ -753,6 +783,7 @@ function wireSalesActions() {
     for (const [k, v] of Object.entries(vals)) {
       if (poForm[k] !== undefined) poForm[k].value = v ?? '';
     }
+    syncPoItem();
     poModal.classList.remove('hidden');
   };
   if (poModal && poForm && !poForm._wired) {
@@ -762,6 +793,7 @@ function wireSalesActions() {
     poForm.onsubmit = async (e) => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(poForm));
+      if (!f.item_id) { alert('Choose an item before saving the purchase line.'); return; }
       const body = {
         order_date: f.order_date, received_date: f.received_date || null,
         expiry_date: f.expiry_date || null,
@@ -2478,8 +2510,10 @@ function wire(view) {
     wireForm('piForm', (f) => st.pi = f);
     wireForm('pvForm', (f) => st.pv = f);
 
-    // ---- category price-matrix modal: EXACT column layouts from the URC file ----
+    // Price matrices are owned by the Matrix Report page. Keep this legacy
+    // renderer dormant so older bundled pages fail harmlessly during rollout.
     const catModal = document.getElementById('catModal');
+    if (catModal) {
     const N = (v, d = 2) => (v == null || isNaN(v)) ? '' :
       Number(v).toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
     const sum = (o) => Object.values(o || {}).reduce((a, b) => a + Number(b), 0);
@@ -2596,6 +2630,7 @@ function wire(view) {
     });
     document.getElementById('catModalClose').onclick = () => catModal.classList.add('hidden');
     catModal.onclick = (e) => { if (e.target === catModal) catModal.classList.add('hidden'); };
+    }
   }
 
   if (view === 'expenses') {

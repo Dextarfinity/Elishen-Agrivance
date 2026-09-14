@@ -947,12 +947,12 @@ const views = {
         { key: 'term', label: 'Term', render: (l) => l.first ? esc(l.s.term ?? '') : '' },
         { key: 'mode', label: 'Payment', render: (l) => l.first ? esc(l.s.payment_mode ?? '') : '' },
         ...(showItems ? itemCols : []),
-        { key: 'total', label: 'Invoice total', num: 1, total: 1, render: (l) => l.first ? fmt(l.s.total) : '' },
+        { key: 'total', label: 'Charge', num: 1, total: 1, render: (l) => l.first ? fmt(l.s.total) : '' },
         // what has already been received (cleared payments only -- a held or
         // bounced cheque is not money yet), shown so the gap to "To pay" is plain
-        { key: 'paid', label: 'Already paid', num: 1, total: 1, render: (l) => !l.first ? ''
+        { key: 'paid', label: 'Payment', num: 1, total: 1, render: (l) => !l.first ? ''
             : (Number(l.s.amount_paid) ? `<span class="paidcell">${fmt(l.s.amount_paid)}</span>` : '—') },
-        { key: 'bal', label: 'To pay', num: 1, total: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
+        { key: 'bal', label: 'Balance due', num: 1, total: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
         { key: 'due', label: 'Days overdue', num: 1, render: (l) => {
             if (!l.first) return '';
             const d = Math.max(0, Math.floor((Date.now() - new Date(l.s.due_date || l.s.date)) / 86400000));
@@ -972,7 +972,7 @@ const views = {
         <p class="artotals">
         ${invoices.length} unpaid invoice(s) &middot; invoiced ${fmt(invoiced)}
         ${paid ? `&minus; already paid ${fmt(paid)}` : ''}
-        &middot; <b>to pay: ${fmt(invoiced - paid)}</b></p>`;
+        &middot; <b>balance due: ${fmt(invoiced - paid)}</b></p>`;
       if (!invoices.length) detail = '<p class="empty">No outstanding receivables.</p>';
     }
     return `<h2>Accounts Receivable</h2>
@@ -1788,8 +1788,11 @@ const views = {
               <label>Order date <input type="date" name="order_date" required></label>
               <label>Received date <input type="date" name="received_date"></label>
               <label>Expiry date (batch — for FEFO alerts) <input type="date" name="expiry_date"></label>
-              <label>Item <select name="item_id" required><option value="">—</option>
-                ${itemOpts.map((o) => `<option value="${o.value}">${esc(o.label)}</option>`).join('')}</select></label>
+              <label>Item
+                <button type="button" class="option-picker" id="poItemOpen">Choose item</button>
+                <select name="item_id" id="poItemSelect" class="hidden"><option value="">—</option>
+                  ${itemOpts.map((o) => `<option value="${o.value}">${esc(o.label)}</option>`).join('')}</select>
+              </label>
               <label>Ordered qty <input type="number" name="purchase_qty" step="any" min="0" required></label>
               <label>Received qty <input type="number" name="received_qty" step="any" min="0"></label>
               <label>Unit cost (0 = free goods) <input type="number" name="unit_cost" step="any" min="0" required></label>
@@ -1803,6 +1806,20 @@ const views = {
             </div>
             <button type="submit" class="primary">Save</button>
           </form></div>
+        </div>
+      </div>
+      <div id="poItemModal" class="modal hidden">
+        <div class="modal-box" style="width:min(620px,100%)">
+          <div class="modal-head"><h3 style="margin:0;flex:1">Choose item</h3>
+            <button type="button" class="mini" id="poItemClose">Close</button></div>
+          <div class="modal-body" style="padding:12px">
+            <input id="poItemSearch" type="search" placeholder="Search item or alias…"
+              autocomplete="off" style="width:100%;margin-bottom:10px">
+            <div id="poItemList" style="display:grid;gap:6px;max-height:55vh;overflow:auto">
+              ${itemOpts.map((o) => `<button type="button" class="option-choice" data-poitem="${o.value}"
+                data-label="${esc(o.label)}">${esc(o.label)}</button>`).join('')}
+            </div>
+          </div>
         </div>
       </div>`;
     return `<h2>Purchases</h2>
@@ -2654,7 +2671,9 @@ const views = {
         <button type="button" class="mini" data-pricelist="outright">Outright dealer</button>
         <button type="button" class="mini" data-pricelist="cod">COD dealer</button>
       </div>
-      ${reorderSection}
+      <div class="pagehandoff">Reorder suggestions and purchase orders live on the
+        <button type="button" class="mini" data-view-go="purchases">Purchases</button> page.
+        This report focuses on pricing, sales monitoring, and income analysis.</div>
       ${monitoring}
       ${incomeSection}
       ${cats.map(section).join('')}
@@ -3067,7 +3086,7 @@ const views = {
       { on_hand: 0, in: 0, low: 0, out: 0, total: 0 });
 
     const itemNames = stock.map((s) => s.name).sort((a, b) => a.localeCompare(b));
-    return `<h2>Inventory Dashboard</h2>
+    return `<h2>Inventory Analytics</h2>
       <div class="cards">
         <div class="card"><span>Total items</span><strong>${stock.length - materials.length}</strong></div>
         <div class="card"><span>Total materials</span><strong>${materials.length}</strong></div>
@@ -3121,10 +3140,9 @@ const views = {
         <button class="mini add">Go</button></form> ${st.year}</h3>
       ${vcols(dQty, dQty.map((_, i) => String(i + 1)))}
 
-      <h3>Inventory categories <small style="font-weight:400;color:#77705f">(click a category for its price matrix)</small></h3>
+      <h3>Inventory categories</h3>
       ${table(catRows, [
-        { key: 'category', label: 'Category', render: (r) =>
-            `<a href="#" class="catlink" data-cat="${esc(r.category)}">${esc(r.category)}</a>` },
+        { key: 'category', label: 'Category', render: (r) => esc(r.category) },
         { key: 'type', label: 'Type' },
         { key: 'on_hand', label: 'On hand', num: 1 },
         { key: 'in', label: 'In stock', num: 1 },
@@ -3185,15 +3203,6 @@ const views = {
         </div>
       </div>
 
-      <div id="catModal" class="modal hidden">
-        <div class="modal-box" style="width:min(1100px,100%)">
-          <div class="modal-head">
-            <h3 id="catModalTitle" style="margin:0; flex:1"></h3>
-            <button type="button" class="mini" id="catModalClose">Close</button>
-          </div>
-          <div class="modal-body" id="catModalBody"></div>
-        </div>
-      </div>
       <div id="priceModal" class="modal hidden">
         <div class="modal-box" style="width:min(760px,100%)">
           <div class="modal-head">
@@ -3773,14 +3782,16 @@ const views = {
         &middot; <b>gross profit: ${fmt(sTotal - sCap)}</b></p>` : '';
 
     return `<h2>Reports</h2>
-      <p class="empty" style="margin:4px 0 14px">Everything that gets reported on, in one place:
-        what is left on the shelf, how the day went, who owes what, tax, item movement and
-        commissions. The <b>URC Report</b> page carries the fund-by-fund figures for filing
+      <p class="empty" style="margin:4px 0 14px">Business summaries in one place:
+        money, collections, sales, tax, item movement and commissions. Current stock status
+        belongs to <b>Inventory Analytics</b>; the <b>URC Report</b> page carries fund-by-fund figures for filing
         with the principal.</p>
       ${moneySection}
       ${collectionsSection}
       ${fundSection}
-      ${stockSection}
+      <div class="pagehandoff">For current stock value, item status, and restocking detail, use
+        <button type="button" class="mini" data-view-go="invdash">Inventory Analytics</button>.
+        Reports focuses on cross-business financial and sales summaries.</div>
       ${salesByCat}
       ${daily}
       <h3>Accounts receivable</h3>
@@ -4021,7 +4032,8 @@ const views = {
           { name: 'roles', label: 'Roles (pick one or more)', type: 'multicheck',
             options: ['Owner', 'Admin', 'Area Manager', 'Sales Representative', 'K-tech',
                       'Warehouse In-charge', 'Marketing'] },
-          { name: 'pin', label: 'PIN (leave blank to keep current)', type: 'password' },
+          { name: 'pin', label: 'PIN (required for new accounts; leave blank to keep current)',
+            type: 'password', requiredOnCreate: true },
           { name: 'daily_rate', label: 'Daily rate (for DTR salary)', type: 'number' },
           { name: 'active', label: 'Active', type: 'checkbox' },
         ],

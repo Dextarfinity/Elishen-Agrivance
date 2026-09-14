@@ -990,11 +990,11 @@ async function printSOA(customerName) {
   const events = [];
   mine.forEach((s) => {
     events.push({ date: String(s.date).slice(0, 10), sort: 0,
-      part: `Invoice ${s.sales_no}${s.term ? ` (${s.term})` : ''}`, ref: s.sales_no,
+      part: `Charge — invoice ${s.sales_no}${s.term ? ` (${s.term})` : ''}`, ref: s.sales_no,
       charge: Number(s.total), credit: 0 });
     payments.filter((p) => p.sale_id === s.id).forEach((p) => events.push({
       date: String(p.date).slice(0, 10), sort: 1,
-      part: `Payment — ${s.sales_no}`, ref: p.or_no ? `OR ${p.or_no}` : '—',
+      part: 'Payment received', ref: p.or_no ? `OR ${p.or_no}` : '—',
       charge: 0, credit: Number(p.amount),
       signature: p.signature || null, payer_name: p.payer_name || null }));
   });
@@ -1036,13 +1036,15 @@ async function printSOA(customerName) {
     `Customer: <b>${customerName}</b>${cust?.address ? ' · ' + cust.address : ''}` +
     `${cust?.contact_no ? ' · ' + cust.contact_no : ''} · As of ${today}`,
     `<table>
-      <thead><tr><th>Date</th><th>Particulars</th><th>Ref</th>
-        <th style="width:95px">Charges</th><th style="width:95px">Payments</th>
-        <th style="width:100px">Balance</th></tr></thead>
+      <thead><tr><th>Date</th><th>Transaction</th><th>Reference</th>
+        <th style="width:95px">Charge</th><th style="width:95px">Payment</th>
+        <th style="width:100px">Balance due</th></tr></thead>
       <tbody>${rows}
-        <tr class="total"><td colspan="5">TOTAL AMOUNT DUE</td><td class="num">${PD(totalDue)}</td></tr>
+        <tr class="total"><td colspan="5">BALANCE DUE</td><td class="num">${PD(totalDue)}</td></tr>
       </tbody>
     </table>
+    <div class="note"><b>How to read this:</b> Charge is the amount billed. Payment is the amount received.
+      Balance due is what remains to be paid.</div>
     <h3>Aging of open balance</h3>
     <table><thead><tr><th>Current</th><th>1–30 days</th><th>31–60 days</th><th>Over 60 days</th><th>Total due</th></tr></thead>
       <tbody><tr><td class="num">${PD(buckets.current)}</td><td class="num">${PD(buckets.b30)}</td>

@@ -168,6 +168,12 @@ tbody tr:hover td { background: var(--primary-soft); }
 }
 .badge.green { background: var(--good-bg); color: var(--good); }
 .badge.amber { background: var(--warn-bg); color: var(--warn); }
+.option-picker { width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--border-strong);
+  border-radius: 8px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.option-picker:hover { border-color: var(--primary); background: var(--primary-soft); }
+.option-choice { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.option-choice:hover { border-color: var(--primary); background: var(--primary-soft); }
 .badge.red { background: var(--bad-bg); color: var(--bad); }
 
 /* ---------- Forms ---------- */
@@ -232,11 +238,16 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
 
 /* ---------- CRUD blocks ---------- */
 .crudblock { margin-bottom: 30px; }
-.crudhead { display: flex; align-items: center; gap: 12px; margin: 26px 0 10px; }
+.crudhead { display: flex; align-items: center; gap: 12px; margin: 26px 0 10px; flex-wrap: wrap; }
 .crudhead h3 { margin: 0; }
+.crudhead > h3 { min-width: 0; overflow-wrap: anywhere; }
 .crudform { margin-bottom: 12px; border: 1px solid var(--primary); box-shadow: 0 0 0 3px var(--primary-soft); }
 .hidden { display: none; }
 .actions { white-space: nowrap; display: inline-flex; gap: 5px; }
+.pagehandoff { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin: 4px 0 14px; padding: 10px 12px; color: var(--ink-2);
+  background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius); }
+.pagehandoff .mini { flex: 0 0 auto; }
 
 /* ---------- Dashboard extras ---------- */
 .rangeform {
@@ -300,6 +311,7 @@ details.collapse > summary:hover { background: var(--surface-2); border-radius: 
 .modal-box { background: var(--surface); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,.25);
   width: min(860px, 100%); max-height: 84vh; display: flex; flex-direction: column; }
 .modal-head { display: flex; gap: 10px; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.modal-head h3 { min-width: 0; overflow-wrap: anywhere; }
 .modal-head input { flex: 1; font-size: 15px; }
 .modal-body { overflow-y: auto; padding: 0 16px 16px; }
 .modal-body table { font-size: 13.5px; }
@@ -468,6 +480,11 @@ label > input, label > select, label > .inputwrap { width: 100%; min-width: 0; }
   .tblfilter label { font-size: 12px; flex: 1 1 auto; min-width: 0; }
   .tblfilter input[type=date] { width: 100%; min-height: 40px; }
   .tblfilter .secprint { margin-left: auto; min-height: 40px; padding: 8px 14px; font-size: 13px; }
+  .crudhead { align-items: flex-start; gap: 8px; }
+  .crudhead h3 { flex: 1 1 100%; }
+  .crudhead > .actions { margin-left: 0 !important; }
+  .pagehandoff { align-items: flex-start; line-height: 1.45; }
+  .pagehandoff .mini { margin-top: -2px; }
 }
 
 /* narrow phones: the printer glyph alone, so the search box keeps its width */

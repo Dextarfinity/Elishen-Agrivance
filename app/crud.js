@@ -26,7 +26,8 @@ function fieldInput(f, val) {
     : f.type === 'password' ? 'password' : 'text';
   const dateVal = f.type === 'date' && v ? String(v).slice(0, 10) : v;
   return `<input type="${t}" name="${f.name}" value="${esc(dateVal)}"
-    ${f.type === 'number' ? 'step="any"' : ''} ${f.required ? 'required' : ''}>`;
+    ${f.type === 'number' ? 'step="any"' : ''}
+    ${f.required ? 'required' : ''} ${f.requiredOnCreate ? 'data-required-on-create="true"' : ''}>`;
 }
 
 function crudBlock(key, cfg) {
@@ -65,6 +66,7 @@ function wireCrud() {
   document.querySelectorAll('[data-crud-new]').forEach((b) => b.onclick = () => {
     const form = document.querySelector(`[data-crud-form="${b.dataset.crudNew}"]`);
     form.reset(); form.querySelector('[name=id]').value = '';
+    form.querySelectorAll('[data-required-on-create]').forEach((el) => el.required = true);
     form.dataset.version = '';
     form.classList.remove('hidden'); form.scrollIntoView({ behavior: 'smooth', block: 'center' });
   });
@@ -76,6 +78,7 @@ function wireCrud() {
     const row = window._crudRows[key].find((r) => String(r.id) === b.dataset.id);
     const form = document.querySelector(`[data-crud-form="${key}"]`);
     form.reset(); form.querySelector('[name=id]').value = row.id;
+    form.querySelectorAll('[data-required-on-create]').forEach((el) => el.required = false);
     form.dataset.version = row.version ?? '';   // optimistic-lock token
     for (const f of window._crudCfg[key].fields) {
       if (f.type === 'multicheck') {
