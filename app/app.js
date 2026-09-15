@@ -506,12 +506,7 @@ function wireSalesActions() {
     if (approved === false && !confirm(`Refuse term sales for ${who}?\n\n`
       + 'They become cash only: the system will not let a term or part-paid invoice be '
       + 'recorded for them until they are accepted again.')) return;
-    let note = null;
-    if (approved !== null) {
-      note = prompt(approved ? `Accepting ${who} for term sales.\nReason / credit limit (optional):`
-        : `Refusing term sales for ${who}.\nReason (optional):`, '');
-      if (note === null) return;                          // cancelled the whole action
-    }
+    const note = null;
     try {
       const updated = await api.post(`/api/customers/${b.dataset.termset}/term_approval`,
         { approved, note: note || null });
