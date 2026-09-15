@@ -1663,8 +1663,11 @@ app.post('/api/customers', wrap(async (req, res) => {
 // approved: true = may buy on term, false = refused, null = back to not reviewed.
 app.post('/api/customers/:id/term_approval', wrap(async (req, res) => {
   const { approved, note } = req.body;
-  const state = approved === null || approved === undefined || approved === ''
-    ? null : (approved === true || approved === 'true');
+  if (!req._isAdmin) return res.status(403).json({ error: 'Only Admin accounts can decide term sales.' });
+  const state = approved === null || approved === undefined || approved === '' ? null
+    : approved === true || approved === 'true' ? true
+      : approved === false || approved === 'false' ? false : undefined;
+  if (state === undefined) return res.status(400).json({ error: 'approved must be true, false, or null.' });
   const who = (req._auth && req._auth.name) || 'Admin';
   const { rows } = await q(`
     UPDATE customers
@@ -1672,7 +1675,7 @@ app.post('/api/customers/:id/term_approval', wrap(async (req, res) => {
            term_approved_by = CASE WHEN $2::boolean IS NULL THEN NULL ELSE $3 END,
            term_approved_at = CASE WHEN $2::boolean IS NULL THEN NULL ELSE now() END,
            term_note = $4
-     WHERE id = $1 RETURNING *`, [req.params.id, state, who, note ?? null]);
+    WHERE id = $1 RETURNING *`, [req.params.id, state, who, note == null ? null : String(note).trim() || null]);
   if (!rows.length) return res.status(404).json({ error: 'not found' });
   const word = state === true ? 'ACCEPT term' : state === false
     ? 'REFUSE term' : 'RESET term review';

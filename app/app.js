@@ -513,8 +513,11 @@ function wireSalesActions() {
       if (note === null) return;                          // cancelled the whole action
     }
     try {
-      await api.post(`/api/customers/${b.dataset.termset}/term_approval`,
+      const updated = await api.post(`/api/customers/${b.dataset.termset}/term_approval`,
         { approved, note: note || null });
+      if (updated?.term_approved !== approved) {
+        throw new Error('The server did not save the requested term decision. Please refresh and try again.');
+      }
       show(window._view);
     } catch (e) { alert('Error: ' + e.message); }
   });
