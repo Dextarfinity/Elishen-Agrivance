@@ -975,7 +975,7 @@ async function printCIS(id) {
 }
 window.printCIS = printCIS;
 
-// ---------- Statement of Account: invoices + payments, running balance, aging ----------
+// ---------- Statement of Account: grouped sales, payments, balance, aging ----------
 async function printSOA(customerName) {
   const [sales, payments, customers] = await Promise.all([
     api.get(`/api/sales?customer=${encodeURIComponent(customerName)}`),
@@ -986,35 +986,19 @@ async function printSOA(customerName) {
     && !String(s.status).toLowerCase().includes('cancel'));
   if (!mine.length) { alert('No invoices found for this customer.'); return; }
   const cust = customers.find((c) => c.name.trim().toUpperCase() === key);
-  // one event stream: each invoice is a charge, each payment a credit
-  const events = [];
-  mine.forEach((s) => {
-    events.push({ date: String(s.date).slice(0, 10), sort: 0,
-      part: `Charge — invoice ${s.sales_no}${s.term ? ` (${s.term})` : ''}`, ref: s.sales_no,
-      charge: Number(s.total), credit: 0 });
-    payments.filter((p) => p.sale_id === s.id).forEach((p) => events.push({
-      date: String(p.date).slice(0, 10), sort: 1,
-      part: 'Payment received', ref: p.or_no ? `OR ${p.or_no}` : '—',
-      charge: 0, credit: Number(p.amount),
-      signature: p.signature || null, payer_name: p.payer_name || null }));
-  });
-  events.sort((a, b) => a.date.localeCompare(b.date) || a.sort - b.sort);
-  let bal = 0;
-  const rows = events.map((e) => {
-    bal += e.charge - e.credit;
-    let r = `<tr><td>${e.date}</td><td>${e.part}</td><td>${e.ref}</td>
-      <td class="num">${e.charge ? PD(e.charge) : ''}</td>
-      <td class="num">${e.credit ? PD(e.credit) : ''}</td>
-      <td class="num">${PD(bal)}</td></tr>`;
-    if (e.signature) {
-      r += `<tr><td colspan="6" style="padding:8px 10px;background:#f9f9f9">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="min-width:120px;font-size:12px;color:#333"><strong>Payer:</strong> ${esc(e.payer_name || '')}</div>
-          <div style="flex:1">${e.signature ? `<img src="${e.signature}" style="height:48px;" alt="signature">` : ''}</div>
-        </div></td></tr>`;
-    }
-    return r;
-  }).join('');
+  const paymentsMine = payments.filter((p) => mine.some((s) => s.id === p.sale_id));
+  const totalSales = mine.reduce((sum, s) => sum + Number(s.total), 0);
+  const totalPayments = paymentsMine.reduce((sum, p) => sum + Number(p.amount), 0);
+  const balanceDue = totalSales - totalPayments;
+  const saleRows = mine.slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id)
+    .map((s) => `<tr><td>${String(s.date).slice(0, 10)}</td>
+      <td>Sale ${esc(s.sales_no)}${s.term ? ` (${esc(s.term)})` : ''}</td>
+      <td>${esc(s.sales_no)}</td><td class="num">${PD(Number(s.total))}</td></tr>`).join('');
+  const paymentRows = paymentsMine.slice()
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id)
+    .map((p) => `<tr><td>${String(p.date).slice(0, 10)}</td><td>Payment received</td>
+      <td>${p.or_no ? `OR ${esc(p.or_no)}` : '—'}</td><td class="num">${PD(Number(p.amount))}</td></tr>`).join('');
   // aging on open balances (by invoice due date, falling back to invoice date)
   const today = new Date().toISOString().slice(0, 10);
   const buckets = { current: 0, b30: 0, b60: 0, b90: 0 };
@@ -1035,16 +1019,28 @@ async function printSOA(customerName) {
   const html = docShell('Statement of Account',
     `Customer: <b>${customerName}</b>${cust?.address ? ' · ' + cust.address : ''}` +
     `${cust?.contact_no ? ' · ' + cust.contact_no : ''} · As of ${today}`,
-    `<table>
-      <thead><tr><th>Date</th><th>Transaction</th><th>Reference</th>
-        <th style="width:95px">Charge</th><th style="width:95px">Payment</th>
-        <th style="width:100px">Balance due</th></tr></thead>
-      <tbody>${rows}
-        <tr class="total"><td colspan="5">BALANCE DUE</td><td class="num">${PD(totalDue)}</td></tr>
+    `<h3>Sales billed</h3>
+    <table>
+      <thead><tr><th>Date</th><th>Sale</th><th>Reference</th><th style="width:120px">Amount</th></tr></thead>
+      <tbody>${saleRows}
+        <tr class="total"><td colspan="3">TOTAL SALES</td><td class="num">${PD(totalSales)}</td></tr>
       </tbody>
     </table>
-    <div class="note"><b>How to read this:</b> Charge is the amount billed. Payment is the amount received.
-      Balance due is what remains to be paid.</div>
+    <h3>Payments received</h3>
+    <table>
+      <thead><tr><th>Date</th><th>Payment</th><th>Reference</th><th style="width:120px">Amount</th></tr></thead>
+      <tbody>${paymentRows || '<tr><td colspan="4">No payments recorded.</td></tr>'}
+        <tr class="total"><td colspan="3">TOTAL PAYMENTS</td><td class="num">${PD(totalPayments)}</td></tr>
+      </tbody>
+    </table>
+    <table class="soa-summary">
+      <tbody><tr><td>Total sales</td><td class="num">${PD(totalSales)}</td></tr>
+        <tr><td>Less: total payments</td><td class="num">− ${PD(totalPayments)}</td></tr>
+        <tr class="total"><td><b>BALANCE DUE</b></td><td class="num"><b>${PD(balanceDue)}</b></td></tr>
+      </tbody>
+    </table>
+    <div class="note"><b>How to read this:</b> Add all sales, add all payments, then subtract payments from sales.
+      The balance due is what remains to be paid.</div>
     <h3>Aging of open balance</h3>
     <table><thead><tr><th>Current</th><th>1–30 days</th><th>31–60 days</th><th>Over 60 days</th><th>Total due</th></tr></thead>
       <tbody><tr><td class="num">${PD(buckets.current)}</td><td class="num">${PD(buckets.b30)}</td>
