@@ -975,35 +975,76 @@ async function printCIS(id) {
 }
 window.printCIS = printCIS;
 
-// ---------- Statement of Account: grouped sales, payments, balance, aging ----------
+// ---------- Statement of Account: charges, payments, totals, aging ----------
 async function printSOA(customerName) {
-  const [sales, payments, customers] = await Promise.all([
+  const [sales, payments, customers, advances] = await Promise.all([
     api.get(`/api/sales?customer=${encodeURIComponent(customerName)}`),
-    api.get('/api/payments'), api.get('/api/customers'),
+    api.get('/api/payments'), api.get('/api/customers'), api.get('/api/customer_advances'),
   ]);
   const key = customerName.trim().toUpperCase();
   const mine = sales.filter((s) => s.customer.trim().toUpperCase() === key
     && !String(s.status).toLowerCase().includes('cancel'));
   if (!mine.length) { alert('No invoices found for this customer.'); return; }
   const cust = customers.find((c) => c.name.trim().toUpperCase() === key);
-  const paymentsMine = payments.filter((p) => mine.some((s) => s.id === p.sale_id));
-  const totalSales = mine.reduce((sum, s) => sum + Number(s.total), 0);
-  const totalPayments = paymentsMine.reduce((sum, p) => sum + Number(p.amount), 0);
-  const balanceDue = totalSales - totalPayments;
-  const saleRows = mine.slice()
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id)
-    .map((s) => `<tr><td>${String(s.date).slice(0, 10)}</td>
-      <td>Sale ${esc(s.sales_no)}${s.term ? ` (${esc(s.term)})` : ''}</td>
-      <td>${esc(s.sales_no)}</td><td class="num">${PD(Number(s.total))}</td></tr>`).join('');
-  const paymentRows = paymentsMine.slice()
-    .sort((a, b) => String(a.date).localeCompare(String(b.date)) || a.id - b.id)
-    .map((p) => `<tr><td>${String(p.date).slice(0, 10)}</td><td>Payment received</td>
-      <td>${p.or_no ? `OR ${esc(p.or_no)}` : '—'}</td><td class="num">${PD(Number(p.amount))}</td></tr>`).join('');
-  // aging on open balances (by invoice due date, falling back to invoice date)
+  const allPaymentsMine = payments.filter((p) => mine.some((s) => s.id === p.sale_id));
+  const internalCreditApplied = allPaymentsMine
+    .filter((p) => String(p.notes || '').startsWith('Settled from credit held on the account'))
+    .reduce((sum, p) => sum + Number(p.amount), 0);
+  const paymentsMine = allPaymentsMine.filter((p) =>
+    !String(p.notes || '').startsWith('Settled from credit held on the account'));
+  const accountPayments = advances.filter((a) => String(a.customer).trim().toUpperCase() === key);
+  const totalCharges = mine.reduce((sum, s) => sum + Number(s.total), 0);
+  const totalPayments = paymentsMine.reduce((sum, p) => sum + Number(p.amount), 0)
+    + accountPayments.reduce((sum, a) => sum + Number(a.amount), 0);
+  const balanceDue = totalCharges - totalPayments;
+  const events = [];
+  mine.forEach((s) => events.push({
+    date: String(s.date).slice(0, 10), sort: 0,
+    transaction: `Charge — invoice ${s.sales_no}${s.term ? ` (${s.term})` : ''}`,
+    reference: s.sales_no, charge: Number(s.total), payment: 0,
+  }));
+  paymentsMine.forEach((p) => events.push({
+    date: String(p.date).slice(0, 10), sort: 1,
+    transaction: 'Payment received', reference: p.or_no ? `OR ${p.or_no}` : '—',
+    charge: 0, payment: Number(p.amount), signature: p.signature || null,
+    payer_name: p.payer_name || null,
+  }));
+  accountPayments.forEach((a) => events.push({
+    date: String(a.date).slice(0, 10), sort: 1,
+    transaction: 'Payment on account', reference: a.or_no ? `OR ${a.or_no}` : '—',
+    charge: 0, payment: Number(a.amount),
+  }));
+  events.sort((a, b) => a.date.localeCompare(b.date) || a.sort - b.sort);
+  const rows = events.map((e) => {
+    const amount = e.charge || e.payment;
+    let row = `<tr><td>${e.date}</td><td>${esc(e.transaction)}</td><td>${esc(e.reference)}</td>
+      <td class="num">${e.charge ? PD(e.charge) : ''}</td>
+      <td class="num">${e.payment ? PD(e.payment) : ''}</td>
+      <td class="num">${PD(amount)}</td></tr>`;
+    if (e.signature) {
+      row += `<tr><td colspan="6" style="padding:8px 10px;background:#f9f9f9">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="min-width:120px;font-size:12px;color:#333"><strong>Payer:</strong>
+            ${esc(e.payer_name || '')}</div>
+          <div style="flex:1"><img src="${e.signature}" style="height:48px;" alt="signature"></div>
+        </div></td></tr>`;
+    }
+    return row;
+  }).join('');
+  // Aging still follows invoice dates, but unapplied account credit reduces the
+  // oldest open balances here so Total due agrees with the statement balance.
   const today = new Date().toISOString().slice(0, 10);
   const buckets = { current: 0, b30: 0, b60: 0, b90: 0 };
-  mine.forEach((s) => {
-    const open = Number(s.total) - Number(s.amount_paid);
+  // Invoice balances already include internal credit-application rows. Use the
+  // receipt total minus those rows so legacy applied flags cannot distort aging.
+  let accountCredit = Math.max(0, accountPayments.reduce((sum, a) =>
+    sum + Number(a.amount), 0) - internalCreditApplied);
+  const openInvoices = mine.map((s) => ({
+    sale: s, open: Math.max(0, Number(s.total) - Number(s.amount_paid)),
+  })).sort((a, b) => String(a.sale.date).localeCompare(String(b.sale.date)) || a.sale.id - b.sale.id);
+  openInvoices.forEach(({ sale: s, open: originalOpen }) => {
+    const open = Math.max(0, originalOpen - Math.min(originalOpen, accountCredit));
+    accountCredit = Math.max(0, accountCredit - originalOpen);
     if (open <= 0.005) return;
     const base = s.due_date || s.date;
     const days = Math.floor((new Date(today) - new Date(String(base).slice(0, 10))) / 86400000);
@@ -1012,41 +1053,33 @@ async function printSOA(customerName) {
     else if (days <= 60) buckets.b60 += open;
     else buckets.b90 += open;
   });
-  const totalDue = mine.reduce((a, s) => a + Number(s.total) - Number(s.amount_paid), 0);
+  const totalDue = Object.values(buckets).reduce((sum, amount) => sum + amount, 0);
   // the acknowledgement belongs to this customer's statement as of today
   const soaKey = `${key}|${localDay()}`;
   const soaSig = await loadDocSigs('SOA', soaKey);
   const html = docShell('Statement of Account',
     `Customer: <b>${customerName}</b>${cust?.address ? ' · ' + cust.address : ''}` +
     `${cust?.contact_no ? ' · ' + cust.contact_no : ''} · As of ${today}`,
-    `<h3>Sales billed</h3>
-    <table>
-      <thead><tr><th>Date</th><th>Sale</th><th>Reference</th><th style="width:120px">Amount</th></tr></thead>
-      <tbody>${saleRows}
-        <tr class="total"><td colspan="3">TOTAL SALES</td><td class="num">${PD(totalSales)}</td></tr>
+    `<table>
+      <thead><tr><th>Date</th><th>Transaction</th><th>Reference</th>
+        <th style="width:95px">Charge</th><th style="width:95px">Payment</th>
+        <th style="width:100px">Total amount</th></tr></thead>
+      <tbody>${rows || '<tr><td colspan="6">No charges or payments recorded.</td></tr>'}
+        <tr class="total"><td colspan="3">TOTALS</td>
+          <td class="num">${PD(totalCharges)}</td><td class="num">${PD(totalPayments)}</td>
+          <td class="num">${PD(balanceDue)}</td></tr>
       </tbody>
     </table>
-    <h3>Payments received</h3>
-    <table>
-      <thead><tr><th>Date</th><th>Payment</th><th>Reference</th><th style="width:120px">Amount</th></tr></thead>
-      <tbody>${paymentRows || '<tr><td colspan="4">No payments recorded.</td></tr>'}
-        <tr class="total"><td colspan="3">TOTAL PAYMENTS</td><td class="num">${PD(totalPayments)}</td></tr>
-      </tbody>
-    </table>
-    <table class="soa-summary">
-      <tbody><tr><td>Total sales</td><td class="num">${PD(totalSales)}</td></tr>
-        <tr><td>Less: total payments</td><td class="num">− ${PD(totalPayments)}</td></tr>
-        <tr class="total"><td><b>BALANCE DUE</b></td><td class="num"><b>${PD(balanceDue)}</b></td></tr>
-      </tbody>
-    </table>
-    <div class="note"><b>How to read this:</b> Add all sales, add all payments, then subtract payments from sales.
-      The balance due is what remains to be paid.</div>
+    <div class="note"><b>How to read this:</b> Charge is the amount billed. Payment is the amount received.
+      Total amount shows the charge or payment for that row. The final row totals charges, payments,
+      and the remaining balance due.</div>
     <h3>Aging of open balance</h3>
     <table><thead><tr><th>Current</th><th>1–30 days</th><th>31–60 days</th><th>Over 60 days</th><th>Total due</th></tr></thead>
       <tbody><tr><td class="num">${PD(buckets.current)}</td><td class="num">${PD(buckets.b30)}</td>
         <td class="num">${PD(buckets.b60)}</td><td class="num">${PD(buckets.b90)}</td>
         <td class="num"><b>${PD(totalDue)}</b></td></tr></tbody></table>
-    <div class="note">Please make payments to ELISHEN AGRIVANCE and request an Official Receipt.
+    <div class="note">Account credit is applied to the oldest open balances for aging only; invoices
+      remain unchanged until the credit is used. Please make payments to ELISHEN AGRIVANCE and request an Official Receipt.
       Kindly disregard amounts already paid but not yet reflected. Generated ${new Date().toLocaleString()}.</div>
     <div class="recvblock">
       <div class="recvby">

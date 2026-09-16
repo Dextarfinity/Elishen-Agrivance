@@ -550,8 +550,8 @@ const views = {
       </form>
       <h3 style="margin:22px 0 6px">Payment on account</h3>
       <p class="hint" style="margin:0 0 8px">When a customer just hands over an amount rather than
-        settling a named invoice. It clears their oldest invoices first; anything left over is held
-        as credit on the account instead of being forced onto an invoice.</p>
+        settling a named invoice. It is recorded once as credit on the account and is not split
+        across invoices or delivery receipts.</p>
       <form id="acctPayForm" class="form">
         <div class="grid3">
           <label>Customer <select name="customer" required>
@@ -1729,16 +1729,44 @@ const views = {
         </div>`).join('');
     // ---- purchase orders grouped in the URC Sales Order format (ref_id = SO No.) ----
     window._poRows = rows;
+    const poFilter = window._poFilter || (window._poFilter = {
+      q: '', from: '', to: '', status: '', vendor: '', sort: 'date-asc' });
+    const poText = (r) => `${r.ref_id || ''} ${itemMap[r.item_id] || ''} ${vendMap[r.vendor_id] || ''} ${r.status || ''}`.toLowerCase();
+    const poRows = rows.filter((r) => (!poFilter.q || poText(r).includes(poFilter.q.toLowerCase()))
+      && (!poFilter.from || String(r.order_date).slice(0, 10) >= poFilter.from)
+      && (!poFilter.to || String(r.order_date).slice(0, 10) <= poFilter.to)
+      && (!poFilter.status || r.status === poFilter.status)
+      && (!poFilter.vendor || String(r.vendor_id) === String(poFilter.vendor)));
     const byRef = {};
-    rows.filter((r) => r.ref_id).forEach((r) => (byRef[r.ref_id] ??= []).push(r));
+    poRows.filter((r) => r.ref_id).forEach((r) => (byRef[r.ref_id] ??= []).push(r));
     const refGroups = Object.entries(byRef).sort((a, b) =>
-      String(a[1][0].order_date).localeCompare(String(b[1][0].order_date)) || a[0].localeCompare(b[0]));
+      (poFilter.sort === 'ref-desc' ? -1 : poFilter.sort === 'ref-asc' ? 1 : 0) * a[0].localeCompare(b[0])
+      || (poFilter.sort === 'date-desc' ? -1 : 1) * String(a[1][0].order_date).localeCompare(String(b[1][0].order_date))
+      || a[0].localeCompare(b[0]));
+    const poFilterBar = `<div class="tblfilter" data-pofilterbar>
+      <input type="search" data-pofield="q" value="${esc(poFilter.q)}" placeholder="Search SO, product, vendor, status…">
+      <label>From <input type="date" data-pofield="from" value="${poFilter.from}"></label>
+      <label>To <input type="date" data-pofield="to" value="${poFilter.to}"></label>
+      <label>Status <select data-pofield="status"><option value="">All statuses</option>
+        ${['Ordered', 'Partial', 'Received', 'Cancelled'].map((s) => `<option value="${s}" ${poFilter.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+      <label>Vendor <select data-pofield="vendor"><option value="">All vendors</option>
+        ${vendOpts.map((v) => `<option value="${v.value}" ${String(poFilter.vendor) === String(v.value) ? 'selected' : ''}>${esc(v.label)}</option>`).join('')}</select></label>
+      <label>Sort <select data-pofield="sort">
+        <option value="date-asc" ${poFilter.sort === 'date-asc' ? 'selected' : ''}>Date ↑</option>
+        <option value="date-desc" ${poFilter.sort === 'date-desc' ? 'selected' : ''}>Date ↓</option>
+        <option value="ref-asc" ${poFilter.sort === 'ref-asc' ? 'selected' : ''}>SO No. ↑</option>
+        <option value="ref-desc" ${poFilter.sort === 'ref-desc' ? 'selected' : ''}>SO No. ↓</option>
+      </select></label>
+      ${poFilter.q || poFilter.from || poFilter.to || poFilter.status || poFilter.vendor ? '<button type="button" class="mini" data-poclear>Clear</button>' : ''}
+      <span class="tblmatch">${poRows.length} of ${rows.length} lines</span>
+    </div>`;
     const poHtml = `
       <div class="crudhead" style="margin-top:18px">
         <h3 style="margin:0">Purchase orders by Sales Order (URC format)</h3>
         <button type="button" class="mini add" data-ponew>New purchase order</button>
       </div>
-      ${!refGroups.length ? '<p class="empty">No purchase orders yet — use New purchase order to create the first one.</p>' : ''}
+      ${poFilterBar}
+      ${!refGroups.length ? '<p class="empty">No purchase orders match the current filters.</p>' : ''}
       ${refGroups.map(([ref, lines]) => {
         const h = lines[0];
         const totQty = lines.reduce((a, l) => a + Number(l.received_qty || l.purchase_qty), 0);

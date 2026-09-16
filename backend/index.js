@@ -1209,6 +1209,10 @@ app.delete('/api/sales/:id', wrap(async (req, res) => {
 // they owe is settled from it straight away rather than waiting to be applied by
 // hand. Oldest credit first, never more than the invoice's balance.
 async function spendCreditOnSale(client, saleId) {
+  // Account payments stay account-level. They are not silently converted into
+  // invoice payments when a later sale is created.
+  return [];
+
   const { rows: sale } = await client.query(
     `SELECT id, customer, total - amount_paid AS balance FROM sales
       WHERE id = $1 AND status NOT ILIKE '%cancel%' AND NOT billed_by_marketing`, [saleId]);
@@ -1314,9 +1318,8 @@ app.delete('/api/payments/:id', wrap(async (req, res) => {
 
 // ---------- payment on account ----------
 // A customer often just hands over an amount rather than settling a named
-// invoice. The money is applied to their open invoices oldest first, and
-// whatever is left over is held as credit on the account instead of being
-// forced onto an invoice that does not owe it.
+// invoice. Keep that receipt as one account credit; do not split it across
+// invoices here. The credit can be applied later when a sale is made.
 app.post('/api/customers/payment', wrap(async (req, res) => {
   const { customer, date, amount, account_id, or_no, notes, cheque_status } = req.body;
   const amt = Number(amount);
@@ -1328,52 +1331,15 @@ app.post('/api/customers/payment', wrap(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // oldest first, and never against an invoice the customer does not owe
-    const { rows: open } = await client.query(
-      `SELECT id, sales_no, date, total, amount_paid, total - amount_paid AS balance
-         FROM sales
-        WHERE UPPER(TRIM(customer)) = UPPER(TRIM($1))
-          AND status NOT ILIKE '%cancel%' AND NOT billed_by_marketing
-          AND total - amount_paid > 0
-        ORDER BY date, id
-          FOR UPDATE`, [who]);
-
-    let left = amt;
-    const applied = [];
-    for (const s of open) {
-      if (left <= 0.005) break;
-      const take = Math.min(Number(s.balance), left);
-      left = +(left - take).toFixed(2);
-      await client.query(
-        `INSERT INTO payments (sale_id, date, amount, account_id, or_no, notes, cheque_status)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [s.id, when, take, account_id ?? null,
-         // an OR number is unique, so it rides on the first slice only
-         applied.length ? null : (or_no || null),
-         `${notes ? notes + ' - ' : ''}Payment on account ${fmtMoney(amt)} of ${when}`,
-         cheque_status || null]);
-      await client.query(
-        `UPDATE sales SET amount_paid = COALESCE(
-           (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
-         WHERE id = $1`, [s.id]);
-      applied.push({ sale_id: s.id, sales_no: s.sales_no, amount: take,
-                     still_open: +(Number(s.balance) - take).toFixed(2) });
-    }
-
-    let advance = null;
-    if (left > 0.005) {
-      const { rows } = await client.query(
-        `INSERT INTO customer_advances (customer, date, amount, applied, account_id, notes)
-         VALUES ($1,$2,$3,0,$4,$5) RETURNING id`,
-        [who, when, left, account_id ?? null,
-         `${notes ? notes + ' - ' : ''}Left over from ${fmtMoney(amt)} received ${when}; `
-         + `no open invoice to apply it to`]);
-      advance = { id: rows[0].id, amount: left };
-    }
+    const { rows } = await client.query(
+      `INSERT INTO customer_advances (customer, date, amount, applied, account_id, notes)
+       VALUES ($1,$2,$3,0,$4,$5) RETURNING id`,
+      [who, when, amt, account_id ?? null,
+       `${notes ? notes + ' - ' : ''}Payment on account ${fmtMoney(amt)} received ${when}`]);
+    const advance = { id: rows[0].id, amount: amt };
     await client.query('COMMIT');
-    res.json({ ok: true, customer: who, received: amt, applied,
-               settled: applied.filter((a) => a.still_open <= 0.005).length,
-               credited: +(amt - left).toFixed(2), held_as_credit: left, advance });
+    res.json({ ok: true, customer: who, received: amt, applied: [], settled: 0,
+               credited: 0, held_as_credit: amt, advance });
   } catch (e) {
     await client.query('ROLLBACK');
     if (e.code === '23505') return res.status(409).json({ error: `OR No. "${or_no}" is already used` });

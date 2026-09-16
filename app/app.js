@@ -1303,6 +1303,19 @@ function wireCisForm() {
 }
 
 function wire(view) {
+  if (view === 'purchases') {
+    document.querySelectorAll('[data-pofield]').forEach((el) => {
+      el.onchange = el.oninput = () => {
+        window._poFilter = window._poFilter || {};
+        window._poFilter[el.dataset.pofield] = el.value;
+        show('purchases');
+      };
+    });
+    document.querySelector('[data-poclear]')?.addEventListener('click', () => {
+      window._poFilter = { q: '', from: '', to: '', status: '', vendor: '', sort: 'date-asc' };
+      show('purchases');
+    });
+  }
   if (view === 'cis') wireCisList();
   if (view === 'cisform') wireCisForm();
   wireCisLinks();                          // "Information sheet" buttons on other pages
@@ -2346,8 +2359,8 @@ function wire(view) {
           out.innerHTML = `<div class="notice ok"><strong>${fmt(r.received)} received from ${esc(r.customer)}.</strong>`
             + (rows ? `<ul style="margin:6px 0 0 18px">${rows}</ul>` : '')
             + (r.held_as_credit > 0.005
-                ? `<p style="margin:6px 0 0">${fmt(r.held_as_credit)} held as credit on the account —
-                   no open invoice left to apply it to.</p>` : '')
+                 ? `<p style="margin:6px 0 0">${fmt(r.held_as_credit)} held as credit on the account —
+                   it was not applied to any invoice or delivery receipt.</p>` : '')
             + '</div>';
           setTimeout(() => show('payments'), 2500);
         } catch (err) {
