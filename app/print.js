@@ -975,7 +975,7 @@ async function printCIS(id) {
 }
 window.printCIS = printCIS;
 
-// ---------- Statement of Account: charges, payments, totals, aging ----------
+// ---------- Statement of Account: charges, payments, and totals ----------
 async function printSOA(customerName) {
   const [sales, payments, customers, advances] = await Promise.all([
     api.get(`/api/sales?customer=${encodeURIComponent(customerName)}`),
@@ -987,9 +987,6 @@ async function printSOA(customerName) {
   if (!mine.length) { alert('No invoices found for this customer.'); return; }
   const cust = customers.find((c) => c.name.trim().toUpperCase() === key);
   const allPaymentsMine = payments.filter((p) => mine.some((s) => s.id === p.sale_id));
-  const internalCreditApplied = allPaymentsMine
-    .filter((p) => String(p.notes || '').startsWith('Settled from credit held on the account'))
-    .reduce((sum, p) => sum + Number(p.amount), 0);
   const paymentsMine = allPaymentsMine.filter((p) =>
     !String(p.notes || '').startsWith('Settled from credit held on the account'));
   const accountPayments = advances.filter((a) => String(a.customer).trim().toUpperCase() === key);
@@ -1031,29 +1028,7 @@ async function printSOA(customerName) {
     }
     return row;
   }).join('');
-  // Aging still follows invoice dates, but unapplied account credit reduces the
-  // oldest open balances here so Total due agrees with the statement balance.
   const today = new Date().toISOString().slice(0, 10);
-  const buckets = { current: 0, b30: 0, b60: 0, b90: 0 };
-  // Invoice balances already include internal credit-application rows. Use the
-  // receipt total minus those rows so legacy applied flags cannot distort aging.
-  let accountCredit = Math.max(0, accountPayments.reduce((sum, a) =>
-    sum + Number(a.amount), 0) - internalCreditApplied);
-  const openInvoices = mine.map((s) => ({
-    sale: s, open: Math.max(0, Number(s.total) - Number(s.amount_paid)),
-  })).sort((a, b) => String(a.sale.date).localeCompare(String(b.sale.date)) || a.sale.id - b.sale.id);
-  openInvoices.forEach(({ sale: s, open: originalOpen }) => {
-    const open = Math.max(0, originalOpen - Math.min(originalOpen, accountCredit));
-    accountCredit = Math.max(0, accountCredit - originalOpen);
-    if (open <= 0.005) return;
-    const base = s.due_date || s.date;
-    const days = Math.floor((new Date(today) - new Date(String(base).slice(0, 10))) / 86400000);
-    if (days <= 0) buckets.current += open;
-    else if (days <= 30) buckets.b30 += open;
-    else if (days <= 60) buckets.b60 += open;
-    else buckets.b90 += open;
-  });
-  const totalDue = Object.values(buckets).reduce((sum, amount) => sum + amount, 0);
   // the acknowledgement belongs to this customer's statement as of today
   const soaKey = `${key}|${localDay()}`;
   const soaSig = await loadDocSigs('SOA', soaKey);
@@ -1073,13 +1048,7 @@ async function printSOA(customerName) {
     <div class="note"><b>How to read this:</b> Charge is the amount billed. Payment is the amount received.
       Total amount shows the charge or payment for that row. The final row totals charges, payments,
       and the remaining balance due.</div>
-    <h3>Aging of open balance</h3>
-    <table><thead><tr><th>Current</th><th>1–30 days</th><th>31–60 days</th><th>Over 60 days</th><th>Total due</th></tr></thead>
-      <tbody><tr><td class="num">${PD(buckets.current)}</td><td class="num">${PD(buckets.b30)}</td>
-        <td class="num">${PD(buckets.b60)}</td><td class="num">${PD(buckets.b90)}</td>
-        <td class="num"><b>${PD(totalDue)}</b></td></tr></tbody></table>
-    <div class="note">Account credit is applied to the oldest open balances for aging only; invoices
-      remain unchanged until the credit is used. Please make payments to ELISHEN AGRIVANCE and request an Official Receipt.
+    <div class="note">Please make payments to ELISHEN AGRIVANCE and request an Official Receipt.
       Kindly disregard amounts already paid but not yet reflected. Generated ${new Date().toLocaleString()}.</div>
     <div class="recvblock">
       <div class="recvby">

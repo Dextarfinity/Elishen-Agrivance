@@ -475,7 +475,7 @@ const views = {
           <label>Tax % <input type="number" name="tax_pct" value="0" step="any"></label>
           <label>Discount % <input type="number" name="discount_pct" value="0" step="any"></label>
           <label>Discount amount (invoice-level) <input type="number" name="discount_amt" value="0" step="any" min="0"></label>
-          <label>Amount paid now <input type="number" name="amount_paid" value="0" step="any"></label>
+          <label>Amount paid now <input type="number" name="amount_paid" value="0" autocomplete="off" step="any"></label>
           <label>OR No. (if paid — manual, unique)
             <input name="or_no" autocomplete="off"><small id="orCheck"></small></label>
         </div>
@@ -506,15 +506,22 @@ const views = {
 
   // ================= Payments ledger =================
   async payments() {
-    const [pays, sales, accounts, owing] = await Promise.all([
+    const [pays, sales, accounts, owing, advances] = await Promise.all([
       api.get('/api/payments'), api.get('/api/sales'), api.get('/api/accounts'),
-      api.get('/api/customers/balances'),
+      api.get('/api/customers/balances'), api.get('/api/customer_advances'),
     ]);
     const open = sales.filter((s) => !String(s.status).toLowerCase().includes('cancel') && s.total - s.amount_paid > 0);
     const pre = window._payPrefill;
     window._payPrefill = null;
+    const accountMap = Object.fromEntries(accounts.map((a) => [a.id, a.name]));
+    const ledgerRows = [
+      ...pays.map((p) => ({ ...p, payment_type: 'Invoice payment' })),
+      ...advances.map((a) => ({ ...a, id: `advance-${a.id}`, payment_type: 'Payment on account',
+        sales_no: '—', invoice_total: null, amount_paid: null,
+        account: accountMap[a.account_id] || '—', cheque_status: null })),
+    ].sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
     window._payRows = pays;
-    const totalReceived = pays.reduce((a, p) => a + Number(p.amount), 0);
+    const totalReceived = ledgerRows.reduce((a, p) => a + Number(p.amount), 0);
     return `<h2>Payments Ledger</h2>
       <form id="payForm" class="form">
         <div class="grid3">
@@ -576,12 +583,13 @@ const views = {
       </form>
       <div class="cards" style="margin:14px 0">
         <div class="card green"><span>Total received (ledger)</span><strong>${fmt(totalReceived)}</strong></div>
-        <div class="card"><span>Payments recorded</span><strong>${pays.length}</strong></div>
+        <div class="card"><span>Payments recorded</span><strong>${ledgerRows.length}</strong></div>
         <div class="card amber"><span>Open invoices</span><strong>${open.length}</strong></div>
       </div>
-      ${table(pays, [
+      ${table(ledgerRows, [
         { key: 'date', label: 'Date', render: (r) => d10(r.date) },
         { key: 'or_no', label: 'OR No.', render: (r) => esc(r.or_no ?? '-') },
+        { key: 'payment_type', label: 'Type' },
         { key: 'sales_no', label: 'Invoice #' },
         { key: 'customer', label: 'Customer' },
         { key: 'amount', label: 'Amount', num: 1, total: 1, render: (r) => fmt(r.amount) },
@@ -590,13 +598,15 @@ const views = {
             ? `<span class="badge ${r.cheque_status === 'Good' ? 'green'
                 : r.cheque_status === 'Bounced' ? 'red' : 'amber'}">${esc(r.cheque_status)}</span>`
             : '-' },
-        { key: 'invoice_total', label: 'Invoice total', num: 1, render: (r) => fmt(r.invoice_total) },
-        { key: 'amount_paid', label: 'Paid to date', num: 1, render: (r) => fmt(r.amount_paid) },
+        { key: 'invoice_total', label: 'Invoice total', num: 1, render: (r) => r.payment_type === 'Payment on account' ? '—' : fmt(r.invoice_total) },
+        { key: 'amount_paid', label: 'Paid to date', num: 1, render: (r) => r.payment_type === 'Payment on account' ? '—' : fmt(r.amount_paid) },
         { key: 'notes', label: 'Notes' },
-        { key: '_a', label: '', render: (r) => `<span class="actions">
-            <button type="button" class="mini" data-editpay="${r.id}">Edit</button>
-            <button type="button" class="mini danger" data-delpay="${r.id}">Delete</button>
-          </span>` },
+        { key: '_a', label: '', render: (r) => r.payment_type === 'Payment on account'
+          ? `<button type="button" class="mini danger" data-delacctpay="${r.id}">Delete</button>`
+          : `<span class="actions">
+              <button type="button" class="mini" data-editpay="${r.id}">Edit</button>
+              <button type="button" class="mini danger" data-delpay="${r.id}">Delete</button>
+            </span>` },
       ])}
       <div id="payEditModal" class="modal hidden">
         <div class="modal-box" style="width:min(560px,100%)">
@@ -1693,6 +1703,111 @@ const views = {
           <div class="modal-body" id="stkMoveBody"></div>
         </div>
       </div>`;
+  },
+
+  // ================= Pull-out Monitor =================
+  // Purchase rows identify what arrived under each SO/PO. Sales and delivery
+  // rows identify what was allocated to a client. They are intentionally shown
+  // as two linked views: the database has no lot-level link between a client
+  // sale and a particular supplier SO, so pretending it does would create false
+  // certainty about segregation.
+  async pullouts() {
+    const [purchases, sales, deliveries, items] = await Promise.all([
+      api.get('/api/purchases'), api.get('/api/sales'), api.get('/api/deliveries'),
+      api.get('/api/items'),
+    ]);
+    const itemMap = Object.fromEntries(items.map((i) => [i.id, itemLabelFull(i)]));
+    const saleMap = Object.fromEntries(sales.map((s) => [s.id, s]));
+    const latestDelivery = {};
+    deliveries.forEach((d) => {
+      if (!latestDelivery[d.sale_id] || Number(d.id) > Number(latestDelivery[d.sale_id].id))
+        latestDelivery[d.sale_id] = d;
+    });
+    const received = {}, allocated = {}, delivered = {}, pending = {};
+    const add = (map, id, qty) => { map[id] = (map[id] || 0) + (Number(qty) || 0); };
+    const inboundRows = purchases.filter((p) => !String(p.status).toLowerCase().includes('cancel'))
+      .map((p) => {
+        const ordered = Number(p.purchase_qty) || 0;
+        const arrived = Number(p.received_qty) || 0;
+        add(received, p.item_id, arrived);
+        return { ...p, ordered, arrived, short: ordered - arrived };
+      });
+    const allocationRows = [];
+    sales.filter((s) => !String(s.status).toLowerCase().includes('cancel')).forEach((s) => {
+      const d = latestDelivery[s.id];
+      (s.items || []).forEach((line) => {
+        const qty = Number(line.qty) || 0;
+        if (!qty) return;
+        const id = line.item_id;
+        add(allocated, id, qty);
+        if (d?.status === 'Delivered') add(delivered, id, qty);
+        else add(pending, id, qty);
+        allocationRows.push({
+          date: s.date, item_id: id, item: itemMap[id] || line.item || `item #${id}`,
+          customer: s.customer, sales_no: s.sales_no, qty,
+          dr_no: d?.dr_no || '—', delivery_status: d?.status || 'Not dispatched',
+        });
+      });
+    });
+    const itemIds = [...new Set([...Object.keys(received), ...Object.keys(allocated)])];
+    const n = (v) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 3 });
+    const summary = itemIds.map((id) => {
+      const r = received[id] || 0, a = allocated[id] || 0, d = delivered[id] || 0;
+      const unallocated = r - a;
+      const state = a > r + 0.001 ? 'Over-allocated' : unallocated > 0.001 ? 'Unallocated stock' : 'Allocated';
+      return { item_id: Number(id), item: itemMap[id] || `item #${id}`, received: r, allocated: a,
+        delivered: d, pending: pending[id] || 0, unallocated, state };
+    }).sort((a, b) => Math.abs(b.unallocated) - Math.abs(a.unallocated));
+    const total = (key) => summary.reduce((sum, r) => sum + (Number(r[key]) || 0), 0);
+    const unallocated = summary.filter((r) => r.state !== 'Allocated');
+    const statusBadge = (s) => s === 'Allocated' ? '<span class="badge green">Allocated</span>'
+      : s === 'Over-allocated' ? '<span class="badge red">Over-allocated</span>'
+        : '<span class="badge amber">Unallocated stock</span>';
+    return `<h2>Pull-out Monitor</h2>
+      <p class="empty" style="margin:4px 0 12px">Check whether received SO/PO stock has been assigned to clients.
+        <b>Received</b> comes from supplier orders; <b>Allocated</b> comes from client sales; <b>Delivered</b>
+        comes from signed delivery receipts. An unallocated line still needs a client assignment or a
+        documented stock decision. This is item-level reconciliation, because a sale is not linked to one
+        specific supplier lot.</p>
+      <div class="cards" style="margin-bottom:14px">
+        <div class="card"><span>Received on SO/PO</span><strong>${n(total('received'))}</strong></div>
+        <div class="card amber"><span>Allocated to clients</span><strong>${n(total('allocated'))}</strong></div>
+        <div class="card green"><span>Delivered / pulled out</span><strong>${n(total('delivered'))}</strong></div>
+        <div class="card ${total('pending') ? 'amber' : 'green'}"><span>Allocated, not delivered</span><strong>${n(total('pending'))}</strong></div>
+        <div class="card ${unallocated.length ? 'red' : 'green'}"><span>Lines needing review</span><strong>${unallocated.length}</strong></div>
+      </div>
+      <h3>Allocation check by item</h3>
+      ${table(summary, [
+        { key: 'item', label: 'Item', render: (r) => itemLabelHtml(items.find((i) => i.id === r.item_id) || { name: r.item }) },
+        { key: 'received', label: 'Received', num: 1, render: (r) => n(r.received) },
+        { key: 'allocated', label: 'Allocated to clients', num: 1, render: (r) => n(r.allocated) },
+        { key: 'delivered', label: 'Delivered', num: 1, render: (r) => n(r.delivered) },
+        { key: 'pending', label: 'Pending pull-out', num: 1, render: (r) => n(r.pending) },
+        { key: 'unallocated', label: 'Unallocated', num: 1, render: (r) => r.unallocated ? `<b>${n(r.unallocated)}</b>` : '—' },
+        { key: 'state', label: 'Check', render: (r) => statusBadge(r.state) },
+      ])}
+      <h3>Inbound SO/PO receipts</h3>
+      ${table(inboundRows, [
+        { key: 'ref_id', label: 'PO / SO', render: (r) => esc(r.ref_id || 'No reference') },
+        { key: 'order_date', label: 'Ordered', render: (r) => d10(r.order_date) },
+        { key: 'item_id', label: 'Item', render: (r) => esc(itemMap[r.item_id] || `item #${r.item_id}`) },
+        { key: 'ordered', label: 'Ordered', num: 1, render: (r) => n(r.ordered) },
+        { key: 'arrived', label: 'Arrived', num: 1, render: (r) => n(r.arrived) },
+        { key: 'short', label: 'Short', num: 1, render: (r) => r.short ? `<span class="badge red">${n(r.short)}</span>` : '—' },
+        { key: 'status', label: 'Status' },
+      ])}
+      <h3>Client pull-outs and allocation</h3>
+      ${table(allocationRows, [
+        { key: 'date', label: 'Sale date', render: (r) => d10(r.date) },
+        { key: 'sales_no', label: 'Client SO / Invoice' },
+        { key: 'customer', label: 'Client' },
+        { key: 'item', label: 'Item' },
+        { key: 'qty', label: 'Allocated qty', num: 1, render: (r) => n(r.qty) },
+        { key: 'dr_no', label: 'DR / pull-out' },
+        { key: 'delivery_status', label: 'Status', render: (r) => r.delivery_status === 'Delivered'
+            ? '<span class="badge green">Delivered</span>'
+            : '<span class="badge amber">Pending</span>' },
+      ])}`;
   },
 
   // ================= Purchases (CRUD + reorder suggestions + vendors + performance) =================
@@ -3421,8 +3536,14 @@ const views = {
       ])}`;
 
     // ---- collections: money actually received ----
+    const reportAccounts = Object.fromEntries((acctBal || []).map((a) => [a.id, a.name]));
+    const collectionRows = [
+      ...(payments || []),
+      ...(custAdv || []).map((a) => ({ ...a, account: reportAccounts[a.account_id] || '(no account tagged)',
+        cheque_status: null, payment_type: 'Payment on account' })),
+    ];
     const payMonth = {}, payAcct = {}, payCheque = {};
-    (payments || []).forEach((p) => {
+    collectionRows.forEach((p) => {
       const m = String(p.date).slice(0, 7);
       const amt = NNUM(p.amount);
       (payMonth[m] ??= { month: m, count: 0, amount: 0 }).count++;
@@ -3438,8 +3559,8 @@ const views = {
     const payMonthRows = Object.values(payMonth).sort((a2, b2) => b2.month.localeCompare(a2.month));
     const payAcctRows = Object.values(payAcct).sort((a2, b2) => b2.amount - a2.amount);
     const chequeRows = Object.values(payCheque);
-    const collectedAll = mTotal(payments || [], (p) => p.amount);
-    const collectedMonth = mTotal((payments || []).filter((p) =>
+    const collectedAll = mTotal(collectionRows, (p) => p.amount);
+    const collectedMonth = mTotal(collectionRows.filter((p) =>
       String(p.date).slice(0, 7) === thisMonth), (p) => p.amount);
     const uncleared = chequeRows.filter((c) => c.status !== 'Good')
       .reduce((a2, c) => a2 + c.amount, 0);
@@ -3451,7 +3572,7 @@ const views = {
       <div class="cards" style="margin-bottom:10px">
         <div class="card green"><span>Collected, all time</span><strong>${fmt(collectedAll)}</strong></div>
         <div class="card"><span>Collected this month</span><strong>${fmt(collectedMonth)}</strong></div>
-        <div class="card"><span>Payments recorded</span><strong>${(payments || []).length}</strong></div>
+        <div class="card"><span>Payments recorded</span><strong>${collectionRows.length}</strong></div>
         ${uncleared ? `<div class="card red"><span>Cheques not cleared</span>
           <strong>${fmt(uncleared)}</strong></div>` : ''}
       </div>

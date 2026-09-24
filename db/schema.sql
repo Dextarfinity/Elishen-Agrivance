@@ -137,6 +137,19 @@ CREATE TABLE IF NOT EXISTS payments (                    -- Payments ledger
     version     integer NOT NULL DEFAULT 1
 );
 
+CREATE TABLE IF NOT EXISTS customer_advances (            -- Payments received on account
+    id            serial PRIMARY KEY,
+    customer      text NOT NULL,
+    date          date NOT NULL,
+    amount        numeric(14,2) NOT NULL,
+    applied       numeric(14,2) NOT NULL DEFAULT 0,
+    account_id    int REFERENCES accounts(id),
+    or_no         text UNIQUE,
+    cheque_status text,
+    notes         text,
+    version       integer NOT NULL DEFAULT 1
+);
+
 CREATE TABLE IF NOT EXISTS purchases (                   -- "Sold Items" tab = purchase orders from vendors
     id            serial PRIMARY KEY,
     order_date    date NOT NULL,

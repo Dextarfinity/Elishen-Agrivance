@@ -51,6 +51,28 @@ async function bootstrapAuth() {
 }
 bootstrapAuth().catch((e) => { console.error('Auth bootstrap failed:', e); process.exit(1); });
 
+// Account payments are separate from invoice payments. Keep the table available
+// for databases created before this payment flow was introduced.
+async function bootstrapCustomerAdvances() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS customer_advances (
+      id            serial PRIMARY KEY,
+      customer      text NOT NULL,
+      date          date NOT NULL,
+      amount        numeric(14,2) NOT NULL,
+      applied       numeric(14,2) NOT NULL DEFAULT 0,
+      account_id    int REFERENCES accounts(id),
+      or_no         text UNIQUE,
+      cheque_status text,
+      notes         text,
+      version       integer NOT NULL DEFAULT 1
+    )`);
+  await pool.query('ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS or_no text');
+  await pool.query('ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS cheque_status text');
+  await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS customer_advances_or_no_uq ON customer_advances(or_no) WHERE or_no IS NOT NULL');
+}
+bootstrapCustomerAdvances().catch((e) => console.error('Customer-advance bootstrap failed:', e));
+
 // ---------- Customer Information Sheet: the paper form, field for field ----------
 // One sheet per store or farm account. Columns mirror the printed template so a
 // saved sheet reprints exactly, including the address broken into its parts.
@@ -736,7 +758,7 @@ const TABLES = {
   recurring_expenses:    ['name', 'category', 'amount', 'tax', 'shipping', 'fees',
                           'account_id', 'day_of_month', 'active'],
   customer_tiers:        ['customer', 'tier'],
-  customer_advances:     ['customer', 'date', 'amount', 'account_id', 'notes'],
+  customer_advances:     ['customer', 'date', 'amount', 'account_id', 'or_no', 'cheque_status', 'notes'],
 };
 
 // Read-only reporting views (replace the spreadsheet dashboards)
@@ -1332,9 +1354,9 @@ app.post('/api/customers/payment', wrap(async (req, res) => {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(
-      `INSERT INTO customer_advances (customer, date, amount, applied, account_id, notes)
-       VALUES ($1,$2,$3,0,$4,$5) RETURNING id`,
-      [who, when, amt, account_id ?? null,
+      `INSERT INTO customer_advances (customer, date, amount, applied, account_id, or_no, cheque_status, notes)
+       VALUES ($1,$2,$3,0,$4,$5,$6,$7) RETURNING id`,
+      [who, when, amt, account_id ?? null, or_no || null, cheque_status || null,
        `${notes ? notes + ' - ' : ''}Payment on account ${fmtMoney(amt)} received ${when}`]);
     const advance = { id: rows[0].id, amount: amt };
     await client.query('COMMIT');

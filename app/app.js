@@ -4,7 +4,7 @@ window._view = 'dashboard';
 
 // ---- role-based access: Purchases → Settings are admin-only ----5 211111222222223
 const ADMIN_VIEWS = ['matrix', 'urcreport', 'stocktake', 'purchases', 'expenses', 'accounts', 'team',
-  'monitoring', 'reports', 'settings', 'customers', 'pricelog'];
+  'monitoring', 'reports', 'settings', 'customers', 'pricelog', 'pullouts'];
 // the money core is OWNER-tier: only users with the Owner role (Henry, Katherine)
 const OWNER_VIEWS = ['accounts', 'team', 'expenses'];
 const isOwner = () => {
@@ -548,6 +548,12 @@ function wireSalesActions() {
     try { await api.del(`/api/payments/${b.dataset.delpay}`); show(window._view); }
     catch (e) { alert('Error: ' + e.message); }
   });
+    document.querySelectorAll('[data-delacctpay]').forEach((b) => b.onclick = async () => {
+      if (!confirm('Delete this payment-on-account receipt? The account credit will be removed.')) return;
+      const id = String(b.dataset.delacctpay).replace(/^advance-/, '');
+      try { await api.del(`/api/customer_advances/${id}`); show(window._view); }
+      catch (e) { alert('Error: ' + e.message); }
+    });
   document.querySelectorAll('[data-cancel]').forEach((b) => b.onclick = async () => {
     if (!confirm('Cancel this invoice? It will be excluded from stock and money totals.')) return;
     try { await api.put(`/api/sales/${b.dataset.cancel}`, { status: 'Cancelled' }); show(window._view); }
@@ -1345,6 +1351,11 @@ function wire(view) {
 
   function wireNewsale() {
     const lines = window._saleData.lines;
+    const saleForm = document.getElementById('saleForm');
+    if (saleForm && !window._editSale) {
+      saleForm.amount_paid.value = '0';
+      saleForm.or_no.value = '';
+    }
     // invoice numbers run in series: fill in the next one, still editable, and
     // only when the field is empty so an edit in progress is never overwritten
     const invIn = document.querySelector('#saleForm [name=sales_no]');
@@ -1557,7 +1568,12 @@ function wire(view) {
         dueIn.value = dateIn.value;
         // cash sale = paid in full at the counter
         const paidIn = document.querySelector('[name=amount_paid]');
-        if (!Number(paidIn.value)) paidIn.value = (window._saleTotal || 0).toFixed(2);
+        const subtotal = lines.reduce((a, l) => a + l.qty * l.unit_price, 0);
+        const lineDisc = lines.reduce((a, l) => a + l.qty * (l.discount || 0), 0);
+        const tax = subtotal * (Number(document.querySelector('[name=tax_pct]').value) || 0) / 100;
+        const disc = subtotal * (Number(document.querySelector('[name=discount_pct]').value) || 0) / 100
+          + (Number(document.querySelector('[name=discount_amt]')?.value) || 0);
+        if (!Number(paidIn.value)) paidIn.value = Math.max(0, subtotal + tax - lineDisc - disc).toFixed(2);
       } else if (m) {
         const d = new Date(dateIn.value + 'T00:00:00Z');
         d.setUTCDate(d.getUTCDate() + Number(m[1]));
