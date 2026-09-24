@@ -366,10 +366,10 @@ const views = {
         ${range ? '<button type="button" class="mini" id="rangeClear">Clear</button>' : ''}
       </form>
       <div class="cards">
-        <div class="card green"><span>Income ${range ? '(period)' : '(this month)'}</span><strong>${fmt(income)}</strong></div>
+        <div class="card green"><span>Sales revenue ${range ? '(period)' : '(this month)'}</span><strong>${fmt(income)}</strong></div>
         <div class="card red"><span>Expenses ${range ? '(period)' : '(this month)'}</span><strong>${fmt(expensesV)}</strong></div>
-        <div class="card ${Number(pl) >= 0 ? 'green' : 'red'}"><span>Profit / Loss</span><strong>${fmt(pl)}</strong></div>
-        <div class="card ${Number(margin) >= 0 ? 'green' : 'red'}"><span>Profit margin</span><strong>${margin}%</strong></div>
+        <div class="card ${Number(pl) >= 0 ? 'green' : 'red'}"><span>Operating surplus</span><strong>${fmt(pl)}</strong></div>
+        <div class="card ${Number(margin) >= 0 ? 'green' : 'red'}"><span>Operating margin</span><strong>${margin}%</strong></div>
         <div class="card green"><span>Gross profit vs capital ${scope}</span><strong>${fmt(rangeData.gross_profit)}</strong></div>
         <div class="card amber"><span>Receivables outstanding</span><strong>${fmt(arTotal)}</strong></div>
       </div>
@@ -377,9 +377,9 @@ const views = {
       <h3>Monthly summary</h3>
       ${table(summary.slice(-12).reverse(), [
         { key: 'month', label: 'Month' },
-        { key: 'total_income', label: 'Income', num: 1, render: (r) => fmt(r.total_income) },
+        { key: 'total_income', label: 'Sales revenue', num: 1, render: (r) => fmt(r.total_income) },
         { key: 'total_expenses', label: 'Expenses', num: 1, render: (r) => fmt(r.total_expenses) },
-        { key: 'profit_loss', label: 'P/L', num: 1, render: (r) => fmt(r.profit_loss) },
+        { key: 'profit_loss', label: 'Operating surplus', num: 1, render: (r) => fmt(r.profit_loss) },
       ])}` : `
       <div class="cards">
         <div class="card amber"><span>Receivables outstanding</span><strong>${fmt(arTotal)}</strong></div>
@@ -518,7 +518,7 @@ const views = {
       ...pays.map((p) => ({ ...p, payment_type: 'Invoice payment' })),
       ...advances.map((a) => ({ ...a, id: `advance-${a.id}`, payment_type: 'Payment on account',
         sales_no: '—', invoice_total: null, amount_paid: null,
-        account: accountMap[a.account_id] || '—', cheque_status: null })),
+        account: accountMap[a.account_id] || '—', cheque_status: a.cheque_status || null })),
     ].sort((a, b) => String(b.date).localeCompare(String(a.date)) || String(b.id).localeCompare(String(a.id)));
     window._payRows = pays;
     const totalReceived = ledgerRows.reduce((a, p) => a + Number(p.amount), 0);
@@ -3891,9 +3891,9 @@ const views = {
         Expenses page and this becomes a real profit figure.</div></div>`}
       ${table([...monthly].sort((a2, b2) => String(b2.month).localeCompare(String(a2.month))), [
         { key: 'month', label: 'Month', render: (r) => `<b>${esc(r.month)}</b>` },
-        { key: 'total_income', label: 'Income', num: 1, render: (r) => fmt(r.total_income) },
+        { key: 'total_income', label: 'Sales revenue', num: 1, render: (r) => fmt(r.total_income) },
         { key: 'total_expenses', label: 'Expenses', num: 1, render: (r) => fmt(r.total_expenses) },
-        { key: 'profit_loss', label: anyExpense ? 'Profit' : 'Revenue (no costs recorded)', num: 1, render: (r) =>
+        { key: 'profit_loss', label: anyExpense ? 'Operating surplus' : 'Revenue (no costs recorded)', num: 1, render: (r) =>
             `<strong style="color:${NNUM(r.profit_loss) >= 0 ? 'var(--good)' : 'var(--bad)'}">
               ${fmt(r.profit_loss)}</strong>` },
       ])}` : '';

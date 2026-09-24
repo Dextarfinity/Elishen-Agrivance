@@ -61,10 +61,14 @@ function writeQueue(q) {
   if (window._renderOfflineChip) window._renderOfflineChip(q.length);
 }
 window._offlineCount = () => readQueue().length;
-function enqueueOffline(method, path, body, who) {
+function txId() {
+  return globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+function enqueueOffline(method, path, body, who, clientTxId) {
   const q = readQueue();
   q.push({ id: Date.now() + '-' + Math.floor(Math.random() * 9999),
-           method, path, body, who, ts: new Date().toISOString() });
+           method, path, body, who, clientTxId, ts: new Date().toISOString() });
   writeQueue(q);
 }
 
@@ -72,6 +76,7 @@ const api = {
   async req(path, opts = {}) {
     const method = (opts.method || 'GET').toUpperCase();
     const mutating = method !== 'GET';
+    const clientTxId = mutating ? (opts.clientTxId || txId()) : null;
     const key = mutating
       ? `${method} ${path} ${opts.body ? JSON.stringify(opts.body).slice(0, 300) : ''}`
       : null;
@@ -85,8 +90,9 @@ const api = {
     }
     try {
       const res = await fetch(`${window.API_BASE}${path}`, {
-        headers: authHeaders(),
         ...opts,
+        headers: { ...authHeaders(), ...(clientTxId
+          ? { 'X-Client-Transaction-ID': clientTxId } : {}), ...(opts.headers || {}) },
         body: opts.body ? JSON.stringify(opts.body) : undefined,
       });
       if (!res.ok) {
@@ -110,7 +116,7 @@ const api = {
         let who = '';
         try { who = (JSON.parse(localStorage.getItem('ea_user') || 'null') || {}).name || ''; } catch {}
         if (method === 'POST' && QUEUEABLE.some((rx) => rx.test(path))) {
-          enqueueOffline(method, path, opts.body, who);
+          enqueueOffline(method, path, opts.body, who, clientTxId);
           toast('No signal — saved OFFLINE on this device. It will sync automatically.', true);
           const err = new Error('queued-offline');
           err.queued = true;
@@ -130,33 +136,45 @@ const api = {
 };
 
 // replay queued offline transactions, oldest first; drop only on server verdicts
+let _syncingOfflineQueue = false;
 async function syncOfflineQueue() {
+  if (_syncingOfflineQueue) return;
+  _syncingOfflineQueue = true;
   let q = readQueue();
-  if (!q.length) return;
-  let synced = 0;
-  for (const item of [...q]) {
-    try {
-      const res = await fetch(`${window.API_BASE}${item.path}`, {
-        method: item.method,
-        headers: authHeaders(),
-        body: JSON.stringify(item.body),
-      });
-      if (res.ok) {
-        synced++;
-        q = q.filter((x) => x.id !== item.id);
+  try {
+    if (!q.length) return;
+    let synced = 0;
+    for (const item of [...q]) {
+      try {
+        item.clientTxId ||= txId();
         writeQueue(q);
-      } else if (res.status >= 400 && res.status < 500) {
-        // the server understood and refused — retrying forever won't help
-        const msg = (await res.json().catch(() => ({}))).error || res.statusText;
-        toast(`Offline entry rejected on sync: ${msg}`, false);
-        q = q.filter((x) => x.id !== item.id);
-        writeQueue(q);
-      } else {
-        break;                       // server trouble — keep and retry later
+        const res = await fetch(`${window.API_BASE}${item.path}`, {
+          method: item.method,
+          headers: { ...authHeaders(), 'X-Client-Transaction-ID': item.clientTxId },
+          body: JSON.stringify(item.body),
+        });
+        if (res.ok) {
+          synced++;
+          q = q.filter((x) => x.id !== item.id);
+          writeQueue(q);
+        } else if (res.status === 401) {
+          toast('Offline entries are waiting — please sign in again to sync.', false);
+          break;
+        } else if (res.status >= 400 && res.status < 500) {
+          // the server understood and refused — retrying forever won't help
+          const msg = (await res.json().catch(() => ({}))).error || res.statusText;
+          toast(`Offline entry rejected on sync: ${msg}`, false);
+          q = q.filter((x) => x.id !== item.id);
+          writeQueue(q);
+        } else {
+          break;                       // server trouble — keep and retry later
+        }
+      } catch {
+        break;                         // still no connection — retry later
       }
-    } catch {
-      break;                         // still no connection — retry later
     }
+    if (synced) toast(`✓ Synced ${synced} offline transaction(s)`);
+  } finally {
+    _syncingOfflineQueue = false;
   }
-  if (synced) toast(`✓ Synced ${synced} offline transaction(s)`);
 }

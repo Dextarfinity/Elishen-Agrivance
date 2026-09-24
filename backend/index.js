@@ -51,6 +51,21 @@ async function bootstrapAuth() {
 }
 bootstrapAuth().catch((e) => { console.error('Auth bootstrap failed:', e); process.exit(1); });
 
+async function bootstrapOfflineTransactions() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS offline_transactions (
+      client_tx_id text PRIMARY KEY,
+      method       text NOT NULL,
+      path         text NOT NULL,
+      status_code  integer,
+      response     jsonb,
+      created_at   timestamptz NOT NULL DEFAULT now()
+    )`);
+  await pool.query('CREATE INDEX IF NOT EXISTS idx_offline_transactions_created ON offline_transactions(created_at)');
+  await pool.query(`DELETE FROM offline_transactions WHERE created_at < now() - interval '30 days'`);
+}
+bootstrapOfflineTransactions().catch((e) => console.error('Offline-transaction bootstrap failed:', e));
+
 // Account payments are separate from invoice payments. Keep the table available
 // for databases created before this payment flow was introduced.
 async function bootstrapCustomerAdvances() {
@@ -572,6 +587,41 @@ app.use('/api', (req, res, next) => {
     }
     res.status(401).json({ error: 'Not signed in — please log in again.' });
   })().catch((e) => res.status(500).json({ error: e.message }));
+});
+// A mobile request may succeed while its response is lost. Replay the same
+// client transaction ID instead of creating a second sale, payment, or visit.
+app.use('/api', (req, res, next) => {
+  const key = req.get('X-Client-Transaction-ID');
+  if (req.method !== 'POST' || !key) return next();
+  if (!/^[\w-]{8,160}$/.test(key)) return res.status(400).json({ error: 'Invalid client transaction ID.' });
+  (async () => {
+    let { rows } = await q(
+      'INSERT INTO offline_transactions (client_tx_id, method, path) VALUES ($1,$2,$3) '
+      + 'ON CONFLICT (client_tx_id) DO NOTHING RETURNING client_tx_id',
+      [key, req.method, req.path]);
+    if (!rows.length) {
+      ({ rows } = await q('SELECT method, path, status_code, response, created_at FROM offline_transactions WHERE client_tx_id = $1', [key]));
+      if (rows.length && (rows[0].method !== req.method || rows[0].path !== req.path))
+        return res.status(409).json({ error: 'Client transaction ID is already used for another request.' });
+      if (rows.length && rows[0].response != null)
+        return res.status(rows[0].status_code || 200).json(rows[0].response);
+      if (rows.length && new Date(rows[0].created_at).getTime() > Date.now() - 10 * 60 * 1000)
+        return res.status(409).json({ error: 'This transaction is already being processed.' });
+      await q('DELETE FROM offline_transactions WHERE client_tx_id = $1', [key]);
+      await q('INSERT INTO offline_transactions (client_tx_id, method, path) VALUES ($1,$2,$3)',
+        [key, req.method, req.path]);
+    }
+    const sendJson = res.json.bind(res);
+    res.json = (body) => {
+      const status = res.statusCode;
+      const save = status >= 200 && status < 300
+        ? q('UPDATE offline_transactions SET status_code = $2, response = $3 WHERE client_tx_id = $1', [key, status, body])
+        : q('DELETE FROM offline_transactions WHERE client_tx_id = $1', [key]);
+      save.catch(() => {});
+      return sendJson(body);
+    };
+    next();
+  })().catch((e) => next(e));
 });
 // ---------- audit trail: every mutating action is recorded with who did it ----------
 app.use('/api', (req, res, next) => {
@@ -2158,7 +2208,7 @@ app.get('/api/reports/range_summary', wrap(async (req, res) => {
   const to = req.query.to || '2999-12-31';
   const [inc, exp, byCat, byItem, incCat] = await Promise.all([
     q(`SELECT COALESCE(SUM(total),0) AS v FROM sales
-       WHERE status NOT ILIKE '%cancel%' AND date BETWEEN $1 AND $2`, [from, to]),
+       WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing AND date BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT COALESCE(SUM(amount - tax + shipping + fees),0) AS v FROM expenses
        WHERE date BETWEEN $1 AND $2`, [from, to]),
     q(`SELECT category,
@@ -2170,7 +2220,7 @@ app.get('/api/reports/range_summary', wrap(async (req, res) => {
     q(`SELECT i.name, SUM(si.qty) AS qty, SUM(si.total_price) AS revenue,
               SUM(si.total_price - si.qty * COALESCE(i.cost, 0)) AS gross_profit
        FROM sale_items si
-       JOIN sales s ON s.id = si.sale_id AND s.status NOT ILIKE '%cancel%'
+      JOIN sales s ON s.id = si.sale_id AND s.status NOT ILIKE '%cancel%' AND NOT s.billed_by_marketing
        JOIN items i ON i.id = si.item_id
        WHERE s.date BETWEEN $1 AND $2
        GROUP BY i.name ORDER BY revenue DESC`, [from, to]),
@@ -2178,7 +2228,7 @@ app.get('/api/reports/range_summary', wrap(async (req, res) => {
               COUNT(DISTINCT s.id) AS sales,
               SUM(si.total_price) AS total
        FROM sale_items si
-       JOIN sales s ON s.id = si.sale_id AND s.status NOT ILIKE '%cancel%'
+      JOIN sales s ON s.id = si.sale_id AND s.status NOT ILIKE '%cancel%' AND NOT s.billed_by_marketing
        JOIN items i ON i.id = si.item_id
        WHERE s.date BETWEEN $1 AND $2
        GROUP BY 1 ORDER BY total DESC`, [from, to]),

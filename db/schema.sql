@@ -9,6 +9,15 @@ CREATE TABLE IF NOT EXISTS settings (
     key         text PRIMARY KEY,
     value       text NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS offline_transactions (
+    client_tx_id text PRIMARY KEY,
+    method       text NOT NULL,
+    path         text NOT NULL,
+    status_code  integer,
+    response     jsonb,
+    created_at   timestamptz NOT NULL DEFAULT now()
+);
 -- expected keys: currency_symbol, start_date, fiscal_year_start_month,
 --                company_name, cancelled_status_label
 
@@ -109,6 +118,7 @@ CREATE TABLE IF NOT EXISTS sales (                       -- Sales Database tab (
     discount      numeric(14,2) NOT NULL DEFAULT 0,
     total         numeric(14,2) NOT NULL DEFAULT 0,
     amount_paid   numeric(14,2) NOT NULL DEFAULT 0,   -- for AR balance
+    billed_by_marketing boolean NOT NULL DEFAULT false,
     status        text NOT NULL DEFAULT 'Completed',  -- 'Cancelled' rows excluded from stock/dashboards
     version       integer NOT NULL DEFAULT 1
 );
@@ -134,6 +144,7 @@ CREATE TABLE IF NOT EXISTS payments (                    -- Payments ledger
     notes       text,
     payer_name  text,
     signature   text,
+    cheque_status text,
     version     integer NOT NULL DEFAULT 1
 );
 
@@ -301,18 +312,40 @@ CREATE OR REPLACE VIEW v_account_balances AS
 SELECT
     a.id, a.name,
     a.beginning_balance,
-    COALESCE(dep.total, 0)                          AS total_deposits,     -- sales received into this account
+    COALESCE(dep.total, 0)                          AS total_deposits,     -- cleared receipts into this account
     COALESCE(wd.expenses, 0) + COALESCE(wd2.purchases, 0) AS total_withdrawals,
     COALESCE(be.total, 0)                           AS balance_adjustments,
     a.beginning_balance + COALESCE(dep.total,0) + COALESCE(be.total,0)
       - (COALESCE(wd.expenses,0) + COALESCE(wd2.purchases,0)) AS current_balance
 FROM accounts a
-LEFT JOIN (SELECT account_id, SUM(amount_paid) AS total
-           FROM sales WHERE status NOT ILIKE '%cancel%'
-           GROUP BY account_id) dep ON dep.account_id = a.id
+LEFT JOIN (
+        SELECT account_id, SUM(total) AS total
+        FROM (
+                SELECT account_id, SUM(amount) AS total
+                FROM payments
+                WHERE (cheque_status IS NULL OR cheque_status = 'Good')
+                    AND COALESCE(notes, '') NOT ILIKE 'Applied from advance%'
+                    AND COALESCE(notes, '') NOT ILIKE 'Settled from credit held%'
+                GROUP BY account_id
+                UNION ALL
+                SELECT account_id, SUM(amount) AS total
+                FROM customer_advances
+                WHERE (cheque_status IS NULL OR cheque_status = 'Good')
+                GROUP BY account_id
+                                UNION ALL
+                                SELECT s.account_id, SUM(s.amount_paid) AS total
+                                FROM sales s
+                                WHERE s.status NOT ILIKE '%cancel%'
+                                    AND NOT s.billed_by_marketing
+                                    AND s.amount_paid > 0
+                                    AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.sale_id = s.id)
+                                GROUP BY s.account_id
+        ) receipts
+        GROUP BY account_id
+) dep ON dep.account_id = a.id
 LEFT JOIN (SELECT account_id, SUM(amount - tax + shipping + fees) AS expenses
            FROM expenses GROUP BY account_id) wd ON wd.account_id = a.id
-LEFT JOIN (SELECT account_id, SUM(purchase_qty * unit_cost) AS purchases
+LEFT JOIN (SELECT account_id, SUM(received_qty * unit_cost) AS purchases
            FROM purchases WHERE status NOT ILIKE '%cancel%'
            GROUP BY account_id) wd2 ON wd2.account_id = a.id
 LEFT JOIN (SELECT account_id, SUM(amount) AS total
@@ -327,6 +360,7 @@ SELECT
     GREATEST(0, CURRENT_DATE - COALESCE(s.due_date, s.date)) AS days_overdue
 FROM sales s
 WHERE s.status NOT ILIKE '%cancel%'
+    AND NOT s.billed_by_marketing
   AND s.total - s.amount_paid > 0;
 
 CREATE OR REPLACE VIEW v_ar_by_customer AS
@@ -337,7 +371,7 @@ SELECT
     SUM(total - amount_paid)         AS balance,
     MAX(GREATEST(0, CURRENT_DATE - COALESCE(due_date, date))) AS max_days_overdue
 FROM sales
-WHERE status NOT ILIKE '%cancel%' AND total - amount_paid > 0
+WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing AND total - amount_paid > 0
 GROUP BY UPPER(TRIM(customer));
 
 -- ----- Custom Bookkeeping Dashboard (income vs expenses by month) -----
@@ -351,7 +385,7 @@ FROM (SELECT DISTINCT date_trunc('month', d)::date AS month
       FROM (SELECT date AS d FROM sales
             UNION ALL SELECT date FROM expenses) t) mo
 LEFT JOIN (SELECT date_trunc('month', date)::date AS month, SUM(total) AS total
-           FROM sales WHERE status NOT ILIKE '%cancel%'
+           FROM sales WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing
            GROUP BY 1) inc ON inc.month = mo.month
 LEFT JOIN (SELECT date_trunc('month', date)::date AS month,
                   SUM(amount - tax + shipping + fees) AS total
@@ -369,7 +403,7 @@ FROM (SELECT DISTINCT date_trunc('month', d)::date AS month
       FROM (SELECT date AS d FROM sales
             UNION ALL SELECT date FROM expenses) t) m
 LEFT JOIN (SELECT date_trunc('month', date)::date AS month, SUM(tax_amount) AS collected
-           FROM sales WHERE status NOT ILIKE '%cancel%' GROUP BY 1) c ON c.month = m.month
+           FROM sales WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing GROUP BY 1) c ON c.month = m.month
 LEFT JOIN (SELECT date_trunc('month', date)::date AS month, SUM(tax) AS paid
            FROM expenses GROUP BY 1) p ON p.month = m.month
 ORDER BY 1;
