@@ -515,4 +515,76 @@ BEGIN
         EXECUTE 'ALTER TABLE payments ADD COLUMN version integer NOT NULL DEFAULT 1';
     END IF;
 END $$;
+
+-- ---------- One-time customer-name merge ----------
+-- Jessie Lua and Jessbert Lua are the same account. This is guarded so the
+-- schema can still be applied to databases that do not yet have customers,
+-- and it is idempotent after the duplicate customer row is removed.
+DO $$
+DECLARE
+    canonical_id integer;
+    duplicate_id integer;
+    canonical_name text := 'JESSBERT LUA';
+BEGIN
+    IF to_regclass(current_schema() || '.customers') IS NULL THEN
+        RETURN;
+    END IF;
+
+    SELECT id INTO canonical_id
+      FROM customers
+     WHERE UPPER(TRIM(name)) = canonical_name
+     ORDER BY id
+     LIMIT 1;
+    SELECT id INTO duplicate_id
+      FROM customers
+     WHERE UPPER(TRIM(name)) = 'JESSIE LUA'
+     ORDER BY id
+     LIMIT 1;
+
+    IF canonical_id IS NULL OR duplicate_id IS NULL OR canonical_id = duplicate_id THEN
+        RETURN;
+    END IF;
+
+    IF to_regclass(current_schema() || '.sales') IS NOT NULL THEN
+        UPDATE sales SET customer = canonical_name
+         WHERE UPPER(TRIM(customer)) IN ('JESSIE LUA', canonical_name);
+    END IF;
+    IF to_regclass(current_schema() || '.customer_advances') IS NOT NULL THEN
+        UPDATE customer_advances SET customer = canonical_name
+         WHERE UPPER(TRIM(customer)) IN ('JESSIE LUA', canonical_name);
+    END IF;
+    IF to_regclass(current_schema() || '.customer_info_sheets') IS NOT NULL THEN
+        UPDATE customer_info_sheets
+           SET account_name = canonical_name,
+               customer_id = CASE WHEN customer_id = duplicate_id THEN canonical_id ELSE customer_id END
+         WHERE UPPER(TRIM(account_name)) IN ('JESSIE LUA', canonical_name)
+            OR customer_id = duplicate_id;
+    END IF;
+    IF to_regclass(current_schema() || '.signer_names') IS NOT NULL THEN
+        DELETE FROM signer_names old
+         WHERE old.customer IS NOT NULL
+           AND UPPER(TRIM(old.customer)) = 'JESSIE LUA'
+           AND EXISTS (
+               SELECT 1 FROM signer_names keep
+                WHERE keep.id <> old.id
+                  AND keep.kind = old.kind
+                  AND UPPER(TRIM(keep.name)) = UPPER(TRIM(old.name))
+                  AND UPPER(TRIM(COALESCE(keep.customer, ''))) = canonical_name
+           );
+        UPDATE signer_names SET customer = canonical_name
+         WHERE UPPER(TRIM(customer)) = 'JESSIE LUA';
+    END IF;
+    IF to_regclass(current_schema() || '.customer_tiers') IS NOT NULL THEN
+        DELETE FROM customer_tiers old
+         WHERE UPPER(TRIM(old.customer)) = 'JESSIE LUA'
+           AND EXISTS (
+               SELECT 1 FROM customer_tiers keep
+                WHERE UPPER(TRIM(keep.customer)) = canonical_name
+           );
+        UPDATE customer_tiers SET customer = canonical_name
+         WHERE UPPER(TRIM(customer)) = 'JESSIE LUA';
+    END IF;
+
+    DELETE FROM customers WHERE id = duplicate_id;
+END $$;
 -- end of schema
