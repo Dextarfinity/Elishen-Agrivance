@@ -7,6 +7,35 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '
 const AR_ALL = '__all__';
 window.AR_ALL = AR_ALL;
 const d10 = (v) => (v ? esc(String(v).slice(0, 10)) : '-');
+function receivablesAfterAccountCredit(sales, advances) {
+  const customerKeyOf = (value) => String(value || '').trim().toUpperCase();
+  const creditByCustomer = {};
+  advances.forEach((advance) => {
+    if (advance.cheque_status && advance.cheque_status !== 'Good') return;
+    const key = customerKeyOf(advance.customer);
+    creditByCustomer[key] = (creditByCustomer[key] || 0)
+      + Math.max(0, Number(advance.amount) - Number(advance.applied));
+  });
+  const openSales = sales.filter((sale) => !String(sale.status).toLowerCase().includes('cancel')
+    && !sale.billed_by_marketing
+    && Number(sale.total) - Number(sale.amount_paid) > 0.005)
+    .sort((a, b) => customerKeyOf(a.customer).localeCompare(customerKeyOf(b.customer))
+      || String(a.date).localeCompare(String(b.date)) || Number(a.id) - Number(b.id));
+  const creditRemaining = { ...creditByCustomer };
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return openSales.map((sale) => {
+    const key = customerKeyOf(sale.customer);
+    const invoiceBalance = Math.max(0, Number(sale.total) - Number(sale.amount_paid));
+    const accountCreditApplied = Math.min(invoiceBalance, creditRemaining[key] || 0);
+    creditRemaining[key] = Math.max(0, (creditRemaining[key] || 0) - accountCreditApplied);
+    const dueDate = new Date(`${String(sale.due_date || sale.date).slice(0, 10)}T00:00:00`);
+    const daysOverdue = Math.max(0, Math.floor((today - dueDate) / 86400000));
+    return { ...sale, account_credit_applied: accountCreditApplied,
+      balance: invoiceBalance - accountCreditApplied, days_overdue: daysOverdue };
+  });
+}
+window.receivablesAfterAccountCredit = receivablesAfterAccountCredit;
 
 // ---- term acceptance: an admin's decision on whether a customer may buy on credit ----
 // Three states, because "we have not looked at this account yet" is not the same
@@ -314,10 +343,11 @@ const views = {
   async dashboard() {
     const range = window._dashRange;
     const rangeQS = range ? `?from=${range.from}&to=${range.to}` : '';
-    const [summary, stock, ar, rangeData] = await Promise.all([
+    const [summary, stock, sales, advances, rangeData] = await Promise.all([
       api.get('/api/reports/monthly_summary'),
       api.get('/api/reports/item_stock'),
-      api.get('/api/reports/ar_by_customer'),
+      api.get('/api/sales'),
+      api.get('/api/customer_advances'),
       api.get('/api/reports/range_summary' + rangeQS),
     ]);
     const curMonth = summary.at(-1) || { total_income: 0, total_expenses: 0, profit_loss: 0 };
@@ -326,7 +356,8 @@ const views = {
     const pl = range ? rangeData.profit_loss : curMonth.profit_loss;
     const margin = Number(income) ? (Number(pl) / Number(income) * 100).toFixed(2) : '0.00';
     const low = stock.filter((s) => s.status !== 'In Stock');
-    const arTotal = ar.reduce((a, r) => a + Number(r.balance), 0);
+    const arTotal = receivablesAfterAccountCredit(sales, advances)
+      .reduce((sum, sale) => sum + sale.balance, 0);
     const scope = range ? '(period)' : '(all time)';
     const rangeDetail = `
       <div class="twocol">
@@ -397,10 +428,11 @@ const views = {
 
   // ================= New Sale (POS) =================
   async newsale() {
-    const [items, reps, accounts, customers, settings, arList, itemsFull, purchAll] = await Promise.all([
+    const [items, reps, accounts, customers, settings, salesForAr, advances, itemsFull, purchAll] = await Promise.all([
       api.get('/api/reports/item_stock'), api.get('/api/sales_reps'),
       api.get('/api/accounts'), api.get('/api/customers'), api.get('/api/settings'),
-      api.get('/api/reports/ar_by_customer'), api.get('/api/items'), api.get('/api/purchases'),
+      api.get('/api/sales'), api.get('/api/customer_advances'),
+      api.get('/api/items'), api.get('/api/purchases'),
     ]);
     // selling-side deal (distributor → dealer, free goods paid by URC marketing)
     const ddMap = Object.fromEntries(itemsFull.map((i) => [i.id, i.price_breakdown?.dealer_deal || null]));
@@ -427,7 +459,11 @@ const views = {
     const presets = (settings.term_presets || 'Cash,7 days,15 days,30 days,End of month,1 up 1 down')
       .split(',').map((s) => s.trim()).filter(Boolean);
     if (!presets.some((p) => /1\s*up\s*1\s*down/i.test(p))) presets.push('1 up 1 down');
-    const arMap = Object.fromEntries(arList.map((a) => [a.customer_key, Number(a.balance)]));
+    const arMap = {};
+    receivablesAfterAccountCredit(salesForAr, advances).forEach((sale) => {
+      const key = String(sale.customer || '').trim().toUpperCase();
+      arMap[key] = (arMap[key] || 0) + Number(sale.balance || 0);
+    });
     window._saleData = { items, customers, presets, arMap, lines: [] };
     return `
       <h2>New Sale</h2>
@@ -852,9 +888,8 @@ const views = {
 
   // ================= Accounts Receivable =================
   async receivables() {
-    const [byCust, allOpen, custRows, advances, advAccts, cisRows] = await Promise.all([
-      api.get('/api/reports/ar_by_customer'),
-      api.get('/api/reports/accounts_receivable'),
+    const [allSales, custRows, advances, advAccts, cisRows] = await Promise.all([
+      api.get('/api/sales'),
       api.get('/api/customers'),
       api.get('/api/customer_advances'),
       opts('/api/accounts'),
@@ -864,9 +899,42 @@ const views = {
     const cisSheetIds = new Set(cisRows.map((s) => s.customer_id).filter((v) => v != null));
     window._advances = advances;
     const advMap = lookupMap(advAccts);
-    // aging buckets across ALL open invoices
+    const customerKeyOf = (value) => String(value || '').trim().toUpperCase();
+    const allOpen = receivablesAfterAccountCredit(allSales, advances);
+    const customerTotals = new Map();
+    allOpen.filter((s) => s.balance > 0.005).forEach((s) => {
+      const key = customerKeyOf(s.customer);
+      const row = customerTotals.get(key) || {
+        customer_key: key, customer: s.customer, open_invoices: 0, balance: 0, max_days_overdue: 0,
+      };
+      row.open_invoices++;
+      row.balance += s.balance;
+      row.max_days_overdue = Math.max(row.max_days_overdue, s.days_overdue);
+      customerTotals.set(key, row);
+    });
+    const byCust = [...customerTotals.values()].sort((a, b) => b.balance - a.balance);
+    const customerOptionsByKey = new Map();
+    const addCustomerOption = (name, balance = 0) => {
+      const key = customerKeyOf(name);
+      if (!key) return;
+      const existing = customerOptionsByKey.get(key);
+      customerOptionsByKey.set(key, {
+        customer_key: key,
+        customer: existing?.customer || String(name).trim(),
+        balance: Math.max(Number(existing?.balance) || 0, Number(balance) || 0),
+      });
+    };
+    custRows.forEach((c) => addCustomerOption(c.name));
+    allSales.filter((s) => !String(s.status).toLowerCase().includes('cancel'))
+      .forEach((s) => addCustomerOption(s.customer));
+    advances.forEach((a) => addCustomerOption(a.customer));
+    byCust.forEach((c) => addCustomerOption(c.customer, c.balance));
+    const customerOptions = [...customerOptionsByKey.values()]
+      .sort((a, b) => a.customer.localeCompare(b.customer));
+    const collectibleRows = allOpen.filter((r) => Number(r.balance) > 0.005);
+    // aging buckets across invoices with an unpaid balance after account credit
     const buckets = { current: 0, b30: 0, b60: 0, b90: 0 };
-    allOpen.forEach((r) => {
+    collectibleRows.forEach((r) => {
       const d = Number(r.days_overdue), bal = Number(r.balance);
       if (d <= 0) buckets.current += bal;
       else if (d <= 30) buckets.b30 += bal;
@@ -885,7 +953,7 @@ const views = {
     };
     const DUE_LABEL = { overdue: 'Overdue', due: 'Due today', notyet: 'Not yet due' };
     const dueTally = { overdue: { n: 0, amt: 0 }, due: { n: 0, amt: 0 }, notyet: { n: 0, amt: 0 } };
-    allOpen.forEach((r) => {
+    collectibleRows.forEach((r) => {
       const t = dueTally[dueStateOf(r)];
       t.n += 1; t.amt += Number(r.balance) || 0;
     });
@@ -916,22 +984,28 @@ const views = {
     // AR_ALL fetches every customer's open invoices at once, so the whole
     // collectible list can be read and printed without stepping through the
     // dropdown one customer at a time.
-    const known = (k) => k === AR_ALL || byCust.some((c) => c.customer_key === k);
-    const sel = known(window._arCustomer) ? window._arCustomer : (byCust[0]?.customer_key ?? null);
+    const known = (k) => k === AR_ALL || customerOptionsByKey.has(k);
+    const defaultCustomer = byCust[0]?.customer_key ?? customerOptions[0]?.customer_key ?? null;
+    const sel = known(window._arCustomer) ? window._arCustomer : defaultCustomer;
     window._arCustomer = sel;
     const showAll = sel === AR_ALL;
-    const selRow = showAll ? null : byCust.find((c) => c.customer_key === sel);
+    const selRow = showAll ? null : customerOptionsByKey.get(sel);
+    const arById = Object.fromEntries(allOpen.map((r) => [r.id, r]));
+    const arOf = (s) => arById[s.id] || {
+      balance: Number(s.total) - Number(s.amount_paid),
+      account_credit_applied: 0,
+    };
     const isOpen = (s) => !String(s.status).toLowerCase().includes('cancel')
-      && Number(s.total) - Number(s.amount_paid) > 0;
+      && Number(arOf(s).balance) > 0;
     // item lines are on by default; collectors turn them off to see only what is owed
     const showItems = window._arShowItems !== false;
     let detail = '<p class="empty">No outstanding receivables.</p>';
     if (showAll || selRow) {
-      const invoices = (showAll
-        ? await api.get('/api/sales')
-        : await api.get(`/api/sales?customer=${encodeURIComponent(selRow.customer)}`))
-        .filter(isOpen)
-        .filter((x) => dueSel === 'all' || dueStateOf(x) === dueSel);
+      const invoices = allSales.filter((s) => showAll
+        || customerKeyOf(s.customer) === customerKeyOf(selRow.customer))
+        .filter((s) => !String(s.status).toLowerCase().includes('cancel') && !s.billed_by_marketing)
+        .filter((s) => !showAll || isOpen(s))
+        .filter((s) => !showAll || dueSel === 'all' || dueStateOf(s) === dueSel);
       // grouped by customer, oldest debt first, so the follow-up list reads top-down
       if (showAll) {
         invoices.sort((a, b) => String(a.customer ?? '').localeCompare(String(b.customer ?? ''))
@@ -960,37 +1034,42 @@ const views = {
         { key: 'total', label: 'Charge', num: 1, total: 1, render: (l) => l.first ? fmt(l.s.total) : '' },
         // what has already been received (cleared payments only -- a held or
         // bounced cheque is not money yet), shown so the gap to "To pay" is plain
-        { key: 'paid', label: 'Payment', num: 1, total: 1, render: (l) => !l.first ? ''
-            : (Number(l.s.amount_paid) ? `<span class="paidcell">${fmt(l.s.amount_paid)}</span>` : '—') },
-        { key: 'bal', label: 'Balance due', num: 1, total: 1, render: (l) => l.first ? `<strong>${fmt(l.s.total - l.s.amount_paid)}</strong>` : '' },
+        { key: 'paid', label: 'Payment / credit', num: 1, total: 1, render: (l) => !l.first ? ''
+          : (Number(l.s.amount_paid) + Number(arOf(l.s).account_credit_applied)
+            ? `<span class="paidcell">${fmt(Number(l.s.amount_paid) + Number(arOf(l.s).account_credit_applied))}</span>` : '—') },
+        { key: 'bal', label: 'Balance due', num: 1, total: 1, render: (l) => l.first ? `<strong>${fmt(arOf(l.s).balance)}</strong>` : '' },
         { key: 'due', label: 'Days overdue', num: 1, render: (l) => {
             if (!l.first) return '';
+            if (Number(arOf(l.s).balance) <= 0.005) return '—';
             const d = Math.max(0, Math.floor((Date.now() - new Date(l.s.due_date || l.s.date)) / 86400000));
             return d > 0 ? `<span class="badge ${d > 30 ? 'red' : 'amber'}">${d}</span>` : '0';
           } },
-        { key: '_a', label: '', render: (l) => l.first ? `<button type="button" class="mini" data-pay="${l.s.id}">Pay</button>` : '' },
+        { key: '_a', label: '', render: (l) => l.first && Number(arOf(l.s).balance) > 0.005
+          ? `<button type="button" class="mini" data-pay="${l.s.id}">Pay</button>` : '' },
       ], { extra: `<label class="tglbox" title="Hide the item lines to see only what each invoice still owes">
           <input type="checkbox" data-showitems="1" ${showItems ? 'checked' : ''}> Show items ordered</label>` });
       // The figure being collected, spelled out under the list: invoiced, less what
       // has already come in, leaves what is still owed. Only the last is collectible.
       const sum = (f) => invoices.reduce((a, s) => a + f(s), 0);
       const invoiced = sum((s) => Number(s.total));
-      const paid = sum((s) => Number(s.amount_paid));
-      detail += `${dueSel !== 'all' ? `<p class="tblmatch" style="margin-top:6px">
+      const paid = sum((s) => Number(s.amount_paid) + Number(arOf(s).account_credit_applied));
+      detail += `${showAll && dueSel !== 'all' ? `<p class="tblmatch" style="margin-top:6px">
         Showing <b>${esc(DUE_LABEL[dueSel].toLowerCase())}</b> only &mdash;
         <button type="button" class="mini" data-ardue="all">show everything outstanding</button></p>` : ''}
         <p class="artotals">
-        ${invoices.length} unpaid invoice(s) &middot; invoiced ${fmt(invoiced)}
+        ${invoices.length} invoice(s) shown &middot; invoiced ${fmt(invoiced)}
         ${paid ? `&minus; already paid ${fmt(paid)}` : ''}
-        &middot; <b>balance due: ${fmt(invoiced - paid)}</b></p>`;
-      if (!invoices.length) detail = '<p class="empty">No outstanding receivables.</p>';
+        &middot; <b>balance due: ${fmt(sum((s) => Number(arOf(s).balance)))}</b></p>`;
+      if (!invoices.length) detail = showAll
+        ? '<p class="empty">No outstanding receivables.</p>'
+        : '<p class="empty">No invoices found for this customer.</p>';
     }
     return `<h2>Accounts Receivable</h2>
       ${agingCards}
       <div class="arhead">
         <label>Customer <select id="arCustomer">
           <option value="${AR_ALL}" ${showAll ? 'selected' : ''}>All customers — every collectible</option>
-          ${byCust.map((c) => `<option value="${esc(c.customer_key)}" ${c.customer_key === sel ? 'selected' : ''}>${esc(c.customer)}</option>`).join('')}
+          ${customerOptions.map((c) => `<option value="${esc(c.customer_key)}" data-customer="${esc(c.customer)}" ${c.customer_key === sel ? 'selected' : ''}>${esc(c.customer)}${Number(c.balance) > 0.005 ? ` · owes ${fmt(c.balance)}` : ' · cleared'}</option>`).join('')}
         </select></label>
         ${showAll ? '' : `<button type="button" class="mini add" id="soaBtn"
           title="Statement of Account — invoices, payments, running balance, aging">Print SOA</button>`}
@@ -1062,7 +1141,31 @@ const views = {
               `<button type="button" class="mini" data-cissheet="${r.id}"
                  data-cisname="${esc(r.name)}">${cisSheetIds.has(r.id) ? 'Open sheet' : '+ Create'}</button>` },
         ],
-      })}`;
+      })}
+      <div id="applyAdvModal" class="modal hidden">
+        <div class="modal-box" style="width:min(520px,100%)">
+          <div class="modal-head">
+            <h3 style="margin:0;flex:1">Apply account payment</h3>
+            <button type="button" class="mini" id="applyAdvClose">Close</button>
+          </div>
+          <div class="modal-body">
+            <form id="applyAdvForm" class="form">
+              <p id="applyAdvSummary" class="hint" style="margin:0"></p>
+              <label>Invoice
+                <select name="sale_id" required></select>
+              </label>
+              <label>Amount to apply
+                <input type="number" name="amount" min="0.01" step="0.01" required>
+              </label>
+              <p id="applyAdvError" class="checkbad" role="status" aria-live="polite"></p>
+              <div class="actions">
+                <button type="submit" class="primary" id="applyAdvSubmit">Apply payment</button>
+                <button type="button" class="mini" id="applyAdvCancel">Cancel</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>`;
   },
 
   // ================= Customers (admin) =================
@@ -1071,13 +1174,18 @@ const views = {
   // carries a new name across all of them in one transaction; this page shows
   // what each change will touch before it is made.
   async customers() {
-    const [rows, arCust, sales, advances, cisRows] = await Promise.all([
-      api.get('/api/customers'), api.get('/api/reports/ar_by_customer'),
-      api.get('/api/sales'), api.get('/api/customer_advances'), api.get('/api/cis'),
+    const [rows, sales, advances, cisRows] = await Promise.all([
+      api.get('/api/customers'), api.get('/api/sales'),
+      api.get('/api/customer_advances'), api.get('/api/cis'),
     ]);
     const key = (v) => String(v ?? '').trim().toUpperCase();
-    const balOf = Object.fromEntries((arCust || []).map((c) => [key(c.customer), Number(c.balance) || 0]));
-    const openOf = Object.fromEntries((arCust || []).map((c) => [key(c.customer), Number(c.open_invoices) || 0]));
+    const receivables = receivablesAfterAccountCredit(sales, advances);
+    const balOf = {}, openOf = {};
+    receivables.filter((r) => r.balance > 0.005).forEach((r) => {
+      const k = key(r.customer);
+      balOf[k] = (balOf[k] || 0) + Number(r.balance);
+      openOf[k] = (openOf[k] || 0) + 1;
+    });
     const invCount = {}, lastBuy = {}, spend = {};
     (sales || []).filter((x) => !String(x.status).toLowerCase().includes('cancel'))
       .forEach((x) => {
@@ -3359,22 +3467,35 @@ const views = {
 
   // ================= Reports =================
   async reports() {
-    const [ar, tax, comms, itemSales, allSales, reps, stock,
-           payments, deliveries, purchases, acctBal, vendors, monthly, arOpen, custAdv,
+    const [tax, comms, itemSales, allSales, reps, stock,
+           payments, deliveries, purchases, acctBal, vendors, monthly, custAdv,
            manualInv, customersAll, expensesAll, attendanceAll, payrollAll, visitsAll, claimsAll,
            itemsFull] =
       await Promise.all([
-        api.get('/api/reports/ar_by_customer'), api.get('/api/reports/sales_tax'),
+        api.get('/api/reports/sales_tax'),
         api.get('/api/reports/rep_commissions'), api.get('/api/reports/monthly_item_sales'),
         api.get('/api/sales'), api.get('/api/sales_reps'), api.get('/api/reports/item_stock'),
         api.get('/api/payments'), api.get('/api/deliveries'), api.get('/api/purchases'),
         api.get('/api/reports/account_balances'), api.get('/api/reports/vendor_performance'),
-        api.get('/api/reports/monthly_summary'), api.get('/api/reports/accounts_receivable'),
+        api.get('/api/reports/monthly_summary'),
         api.get('/api/customer_advances'), api.get('/api/manual_inventory'),
         api.get('/api/customers'), api.get('/api/expenses'), api.get('/api/attendance'),
         api.get('/api/payroll_runs'), api.get('/api/store_visits'), api.get('/api/claims'),
         api.get('/api/items'),
       ]);
+    const arOpen = receivablesAfterAccountCredit(allSales, custAdv);
+    const arByCustomer = new Map();
+    arOpen.filter((r) => r.balance > 0.005).forEach((r) => {
+      const k = String(r.customer || '').trim().toUpperCase();
+      const current = arByCustomer.get(k) || {
+        customer: r.customer, open_invoices: 0, balance: 0, max_days_overdue: 0,
+      };
+      current.open_invoices++;
+      current.balance += Number(r.balance);
+      current.max_days_overdue = Math.max(current.max_days_overdue, Number(r.days_overdue) || 0);
+      arByCustomer.set(k, current);
+    });
+    const ar = [...arByCustomer.values()].sort((a, b) => b.balance - a.balance);
     window._salesForExport = allSales;
     // ---- daily sales summary: "how did today go" ----
     const day = window._dailyDate || (window._dailyDate = new Date().toLocaleDateString('en-CA'));
@@ -3599,13 +3720,15 @@ const views = {
     // ---- receivables: the aging that the Receivables page shows, summarised ----
     const buckets = { current: 0, b30: 0, b60: 0, b90: 0 };
     const bcount = { current: 0, b30: 0, b60: 0, b90: 0 };
-    (arOpen || []).forEach((r) => {
+    (arOpen || []).filter((r) => NNUM(r.balance) > 0.005).forEach((r) => {
       const d = NNUM(r.days_overdue), bal = NNUM(r.balance);
       const k = d <= 0 ? 'current' : d <= 30 ? 'b30' : d <= 60 ? 'b60' : 'b90';
       buckets[k] += bal; bcount[k] += 1;
     });
     const owed = buckets.current + buckets.b30 + buckets.b60 + buckets.b90;
-    const advances = mTotal(custAdv || [], (a2) => NNUM(a2.amount) - NNUM(a2.applied));
+    const advances = mTotal(custAdv || [], (a2) =>
+      (!a2.cheque_status || a2.cheque_status === 'Good')
+        ? Math.max(0, NNUM(a2.amount) - NNUM(a2.applied)) : 0);
     const agingSection = `
       <div class="cards" style="margin-bottom:10px">
         <div class="card amber"><span>Owed in total</span><strong>${fmt(owed)}</strong></div>

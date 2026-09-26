@@ -2305,35 +2305,90 @@ function wire(view) {
     });
     const soa = document.getElementById('soaBtn');
     if (soa) soa.onclick = () => {
-      const name = document.getElementById('arCustomer')?.selectedOptions[0]?.textContent;
+      const option = document.getElementById('arCustomer')?.selectedOptions[0];
+      const name = option?.dataset.customer || option?.textContent;
       if (name) printSOA(name.trim());
     };
-    // apply an advance onto one of that customer's open invoices
-    document.querySelectorAll('[data-applyadv]').forEach((b) => b.onclick = async () => {
-      const adv = (window._advances || []).find((a) => a.id === Number(b.dataset.applyadv));
-      if (!adv) return;
-      const remaining = Number(adv.amount) - Number(adv.applied);
-      const sales = await api.get(`/api/sales?customer=${encodeURIComponent(adv.customer)}`);
-      const open = sales.filter((s) => !String(s.status).toLowerCase().includes('cancel')
-        && Number(s.total) - Number(s.amount_paid) > 0.005);
-      if (!open.length) return alert(`No open invoices for ${adv.customer} — encode the sale first, then apply this advance.`);
-      const pick = prompt(
-        `Apply advance of ${remaining.toFixed(2)} from ${adv.customer}.\nOpen invoices:\n`
-        + open.map((s, i) => `${i + 1}. ${s.sales_no} — balance ${(Number(s.total) - Number(s.amount_paid)).toFixed(2)}`).join('\n')
-        + `\n\nEnter the number of the invoice to pay:`, '1');
-      if (pick === null) return;
-      const s = open[Number(pick) - 1];
-      if (!s) return alert('Invalid choice.');
-      const bal = Number(s.total) - Number(s.amount_paid);
-      const amtStr = prompt(`Amount to apply to ${s.sales_no} (balance ${bal.toFixed(2)}, advance remaining ${remaining.toFixed(2)}):`,
-        Math.min(bal, remaining).toFixed(2));
-      if (amtStr === null) return;
-      const amt = Number(amtStr);
-      if (!(amt > 0) || amt > remaining + 0.005) return alert('Invalid amount.');
+    const applyModal = document.getElementById('applyAdvModal');
+    const applyForm = document.getElementById('applyAdvForm');
+    const applySale = applyForm?.elements.sale_id;
+    const applyAmount = applyForm?.elements.amount;
+    const applyError = document.getElementById('applyAdvError');
+    const applySubmit = document.getElementById('applyAdvSubmit');
+    const closeApplyModal = () => applyModal?.classList.add('hidden');
+    document.getElementById('applyAdvClose')?.addEventListener('click', closeApplyModal);
+    document.getElementById('applyAdvCancel')?.addEventListener('click', closeApplyModal);
+    applyModal?.addEventListener('click', (e) => {
+      if (e.target === applyModal) closeApplyModal();
+    });
+    const updateApplyAmount = () => {
+      const option = applySale?.selectedOptions[0];
+      const remaining = Number(applyForm?.dataset.remaining) || 0;
+      const invoiceBalance = Number(option?.dataset.balance) || 0;
+      const limit = Math.min(remaining, invoiceBalance);
+      if (applyAmount) {
+        applyAmount.max = limit.toFixed(2);
+        applyAmount.value = limit.toFixed(2);
+      }
+    };
+    if (applySale) applySale.onchange = updateApplyAmount;
+    if (applyForm) applyForm.onsubmit = async (e) => {
+      e.preventDefault();
+      const amount = Number(applyAmount?.value);
+      const option = applySale?.selectedOptions[0];
+      const maxAllowed = Math.min(Number(applyForm.dataset.remaining) || 0,
+        Number(option?.dataset.balance) || 0);
+      if (!option || !Number.isFinite(amount) || amount <= 0 || amount > maxAllowed + 0.005) {
+        if (applyError) applyError.textContent = 'Enter an amount within the remaining credit and invoice balance.';
+        return;
+      }
+      if (applySubmit) { applySubmit.disabled = true; applySubmit.textContent = 'Applying…'; }
+      if (applyError) applyError.textContent = '';
       try {
-        await api.post(`/api/advances/${adv.id}/apply`, { sale_id: s.id, amount: amt });
+        await api.post(`/api/advances/${applyForm.dataset.advanceId}/apply`, {
+          sale_id: Number(option.value), amount,
+        });
+        closeApplyModal();
+        toast('Account credit applied to invoice.');
         show('receivables');
-      } catch (e) { alert('Error: ' + e.message); }
+      } catch (err) {
+        if (applyError) applyError.textContent = err.message || 'Could not apply account payment.';
+      } finally {
+        if (applySubmit) { applySubmit.disabled = false; applySubmit.textContent = 'Apply payment'; }
+      }
+    };
+    // Load open invoices, then let the in-app dialog collect the allocation.
+    document.querySelectorAll('[data-applyadv]').forEach((b) => b.onclick = async () => {
+      b.disabled = true;
+      try {
+        const adv = (window._advances || []).find((a) => Number(a.id) === Number(b.dataset.applyadv));
+        if (!adv) throw new Error('Payment-on-account record not found. Refresh Receivables and try again.');
+        if (adv.cheque_status && adv.cheque_status !== 'Good')
+          throw new Error('This cheque has not cleared, so its amount cannot be applied yet.');
+        const remaining = Number(adv.amount) - Number(adv.applied);
+        if (!(remaining > 0.005)) throw new Error('This account payment has no remaining credit.');
+        const sales = await api.get(`/api/sales?customer=${encodeURIComponent(adv.customer)}`);
+        const customerKey = String(adv.customer).trim().toUpperCase();
+        const open = sales.filter((s) => String(s.customer).trim().toUpperCase() === customerKey
+          && !String(s.status).toLowerCase().includes('cancel') && !s.billed_by_marketing
+          && Number(s.total) - Number(s.amount_paid) > 0.005);
+        if (!open.length) throw new Error(`No open invoices for ${adv.customer}.`);
+        if (!applyModal || !applyForm || !applySale || !applyAmount)
+          throw new Error('The account-payment dialog is unavailable. Refresh Receivables and try again.');
+        applyForm.dataset.advanceId = adv.id;
+        applyForm.dataset.remaining = remaining;
+        document.getElementById('applyAdvSummary').textContent =
+          `${adv.customer}: ${remaining.toFixed(2)} account credit available.`;
+        applyError.textContent = '';
+        applySale.innerHTML = open.map((s) => {
+          const balance = Number(s.total) - Number(s.amount_paid);
+          return `<option value="${s.id}" data-balance="${balance}">#${esc(s.sales_no)} · ${esc(String(s.date).slice(0, 10))} · balance ${fmt(balance)}</option>`;
+        }).join('');
+        updateApplyAmount();
+        applyModal.classList.remove('hidden');
+        applySale.focus();
+      } catch (e) { alert('Could not apply account payment: ' + e.message); }
+      finally { b.disabled = false; }
     });
   }
 
@@ -3540,7 +3595,12 @@ document.addEventListener('submit', (e) => {
     const today = new Date().toLocaleDateString('en-CA');
     if (dueShownFor === today) return;              // once per launch, per day
     let open;
-    try { open = await api.get('/api/reports/accounts_receivable'); } catch { return; }
+    try {
+      const [sales, advances] = await Promise.all([
+        api.get('/api/sales'), api.get('/api/customer_advances'),
+      ]);
+      open = window.receivablesAfterAccountCredit(sales, advances);
+    } catch { return; }
     dueShownFor = today;
     const state = (r) => {
       const d = String(r.due_date || r.date || '').slice(0, 10);

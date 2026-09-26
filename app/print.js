@@ -984,12 +984,17 @@ async function printSOA(customerName) {
   const key = customerName.trim().toUpperCase();
   const mine = sales.filter((s) => s.customer.trim().toUpperCase() === key
     && !String(s.status).toLowerCase().includes('cancel'));
-  if (!mine.length) { alert('No invoices found for this customer.'); return; }
   const cust = customers.find((c) => c.name.trim().toUpperCase() === key);
   const allPaymentsMine = payments.filter((p) => mine.some((s) => s.id === p.sale_id));
   const paymentsMine = allPaymentsMine.filter((p) =>
-    !String(p.notes || '').startsWith('Settled from credit held on the account'));
-  const accountPayments = advances.filter((a) => String(a.customer).trim().toUpperCase() === key);
+    !String(p.notes || '').startsWith('Settled from credit held on the account')
+    && !String(p.notes || '').startsWith('Applied from advance'));
+  const accountPayments = advances.filter((a) => String(a.customer).trim().toUpperCase() === key
+    && (a.cheque_status == null || a.cheque_status === 'Good'));
+  if (!mine.length && !accountPayments.length) {
+    alert('No invoices or cleared account payments found for this customer.');
+    return;
+  }
   const totalCharges = mine.reduce((sum, s) => sum + Number(s.total), 0);
   const totalPayments = paymentsMine.reduce((sum, p) => sum + Number(p.amount), 0)
     + accountPayments.reduce((sum, a) => sum + Number(a.amount), 0);

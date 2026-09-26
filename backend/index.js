@@ -86,7 +86,6 @@ async function bootstrapCustomerAdvances() {
   await pool.query('ALTER TABLE customer_advances ADD COLUMN IF NOT EXISTS cheque_status text');
   await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS customer_advances_or_no_uq ON customer_advances(or_no) WHERE or_no IS NOT NULL');
 }
-bootstrapCustomerAdvances().catch((e) => console.error('Customer-advance bootstrap failed:', e));
 
 // ---------- Customer Information Sheet: the paper form, field for field ----------
 // One sheet per store or farm account. Columns mirror the printed template so a
@@ -478,15 +477,53 @@ async function bootstrapMarketingBilled() {
                    FROM expenses GROUP BY 1) exp ON exp.month = mo.month
      ORDER BY mo.month`);
 
-  // nothing is owed by the customer on a marketing-billed invoice
+  // Account credit is shown against the customer's oldest invoices without
+  // changing invoice payment history. The views must be installed here too:
+  // this bootstrap runs on the live server and otherwise replaces schema.sql's
+  // credit-aware definition with an invoice-only balance.
   await pool.query(`
     CREATE OR REPLACE VIEW v_accounts_receivable AS
+    WITH open_sales AS (
+      SELECT s.id, s.sales_no, s.date, s.customer, s.store_farm, s.term,
+             s.due_date, s.total, s.amount_paid,
+             s.total - s.amount_paid AS invoice_balance,
+             UPPER(TRIM(s.customer)) AS customer_key,
+             COALESCE(SUM(s.total - s.amount_paid) OVER (
+               PARTITION BY UPPER(TRIM(s.customer))
+               ORDER BY s.date, s.id
+               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS prior_balance
+        FROM sales s
+       WHERE s.status NOT ILIKE '%cancel%'
+         AND NOT s.billed_by_marketing
+         AND s.total - s.amount_paid > 0
+    ), account_credit AS (
+      SELECT UPPER(TRIM(customer)) AS customer_key,
+             SUM(GREATEST(amount - applied, 0)) AS available_credit
+        FROM customer_advances
+       WHERE cheque_status IS NULL OR cheque_status = 'Good'
+       GROUP BY UPPER(TRIM(customer))
+    ), allocated AS (
+      SELECT s.*,
+             LEAST(s.invoice_balance,
+                   GREATEST(COALESCE(c.available_credit, 0) - s.prior_balance, 0))
+               AS account_credit_applied
+        FROM open_sales s
+        LEFT JOIN account_credit c ON c.customer_key = s.customer_key
+    )
     SELECT id, sales_no, date, customer, store_farm, term, due_date, total, amount_paid,
-           total - amount_paid AS balance,
+           customer_key, account_credit_applied,
+           invoice_balance - account_credit_applied AS balance,
            GREATEST(0, CURRENT_DATE - COALESCE(due_date, date)) AS days_overdue
-      FROM sales s
-     WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing
-       AND (total - amount_paid) > 0`);
+      FROM allocated`);
+
+  await pool.query(`
+    CREATE OR REPLACE VIEW v_ar_by_customer AS
+    SELECT customer_key, MIN(customer) AS customer, COUNT(*) AS open_invoices,
+           SUM(balance) AS balance,
+           MAX(GREATEST(0, CURRENT_DATE - COALESCE(due_date, date))) AS max_days_overdue
+      FROM v_accounts_receivable
+     WHERE balance > 0
+     GROUP BY customer_key`);
 
   // no commission on goods the rep did not sell for Elishen's account
   await pool.query(`
@@ -500,7 +537,8 @@ async function bootstrapMarketingBilled() {
              AND s.status NOT ILIKE '%cancel%' AND NOT s.billed_by_marketing
      GROUP BY r.id, r.name, r.commission_rate`);
 }
-bootstrapMarketingBilled().catch((e) => console.error('Marketing-billed bootstrap failed:', e));
+bootstrapCustomerAdvances().then(bootstrapMarketingBilled)
+  .catch((e) => console.error('Financial-view bootstrap failed:', e));
 
 // A cheque is a promise, not money. It only counts once it clears, so a payment
 // carries the state of its cheque and CLEARED is what every total is summed over.
@@ -718,6 +756,7 @@ const NON_ADMIN_ALLOWED = [
   [/^POST$/,   /^\/sales$/],                      // encode a sale (forced to Pending approval)
   [/^POST$/,   /^\/sales\/\d+\/payments$/],       // receive money at the counter
   [/^POST$/,   /^\/customers\/payment$/],          // receive money against the account
+  [/^POST$/,   /^\/advances\/\d+\/apply$/],        // allocate received account credit to an invoice
   [/^POST$/,   /^\/sales\/\d+\/deliveries$/],     // issue a DR
   [/^PUT$/,    /^\/deliveries\/\d+$/],            // mark delivered, e-signature, DR details
   [/^POST$/,   /^\/attendance$/],                 // time in / out
@@ -1963,30 +2002,58 @@ app.post('/api/notifications/seen', wrap(async (req, res) => {
 app.post('/api/advances/:id/apply', wrap(async (req, res) => {
   const { sale_id, amount } = req.body;
   const amt = Number(amount);
-  if (!sale_id || !(amt > 0)) return res.status(400).json({ error: 'sale and positive amount required' });
+  const advanceId = Number(req.params.id);
+  const saleId = Number(sale_id);
+  if (!Number.isInteger(advanceId) || advanceId <= 0 || !Number.isInteger(saleId) || saleId <= 0
+      || !Number.isFinite(amt) || !(amt > 0))
+    return res.status(400).json({ error: 'advance, sale, and positive amount are required' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     const { rows: adv } = await client.query(
-      'SELECT * FROM customer_advances WHERE id = $1 FOR UPDATE', [req.params.id]);
+      'SELECT * FROM customer_advances WHERE id = $1 FOR UPDATE', [advanceId]);
     if (!adv.length) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'advance not found' }); }
+    if (adv[0].cheque_status && adv[0].cheque_status !== 'Good') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This cheque has not cleared and cannot be applied.' });
+    }
     const remaining = Number(adv[0].amount) - Number(adv[0].applied);
     if (amt > remaining + 0.005) {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: `Only ${remaining.toFixed(2)} remains on this advance.` });
     }
+    const { rows: sale } = await client.query(
+      `SELECT id, customer, total - amount_paid AS balance, status, billed_by_marketing
+         FROM sales WHERE id = $1 FOR UPDATE`, [saleId]);
+    if (!sale.length) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'invoice not found' });
+    }
+    if (String(sale[0].customer).trim().toUpperCase() !== String(adv[0].customer).trim().toUpperCase()) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This account payment belongs to a different customer.' });
+    }
+    if (String(sale[0].status).toLowerCase().includes('cancel') || sale[0].billed_by_marketing
+        || Number(sale[0].balance) <= 0.005) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'This invoice has no collectible balance.' });
+    }
+    if (amt > Number(sale[0].balance) + 0.005) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: `Invoice balance is only ${Number(sale[0].balance).toFixed(2)}.` });
+    }
     await client.query(
       `INSERT INTO payments (sale_id, date, amount, account_id, notes)
        VALUES ($1, CURRENT_DATE, $2, $3, $4)`,
-      [sale_id, amt, adv[0].account_id,
+      [saleId, amt, adv[0].account_id,
        `Applied from advance #${adv[0].id} (${adv[0].notes || adv[0].customer})`]);
     await client.query(
       'UPDATE customer_advances SET applied = applied + $2, version = version + 1 WHERE id = $1',
-      [req.params.id, amt]);
+      [advanceId, amt]);
     await client.query(
       `UPDATE sales SET amount_paid = COALESCE(
          (SELECT SUM(p.amount) FROM payments p WHERE p.sale_id = $1 AND ${CLEARED}), 0)
-       WHERE id = $1`, [sale_id]);
+      WHERE id = $1`, [saleId]);
     await client.query('COMMIT');
     res.json({ ok: true, remaining: remaining - amt });
   } catch (e) {

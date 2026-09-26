@@ -353,25 +353,48 @@ LEFT JOIN (SELECT account_id, SUM(amount) AS total
 
 -- ----- Accounts Receivable tab -----
 CREATE OR REPLACE VIEW v_accounts_receivable AS
-SELECT
-    s.id, s.sales_no, s.date, s.customer, s.store_farm, s.term,
-    s.due_date, s.total, s.amount_paid,
-    s.total - s.amount_paid                          AS balance,
-    GREATEST(0, CURRENT_DATE - COALESCE(s.due_date, s.date)) AS days_overdue
-FROM sales s
-WHERE s.status NOT ILIKE '%cancel%'
-    AND NOT s.billed_by_marketing
-  AND s.total - s.amount_paid > 0;
+WITH open_sales AS (
+    SELECT s.id, s.sales_no, s.date, s.customer, s.store_farm, s.term,
+           s.due_date, s.total, s.amount_paid,
+           s.total - s.amount_paid AS invoice_balance,
+           UPPER(TRIM(s.customer)) AS customer_key,
+           COALESCE(SUM(s.total - s.amount_paid) OVER (
+               PARTITION BY UPPER(TRIM(s.customer))
+               ORDER BY s.date, s.id
+               ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING), 0) AS prior_balance
+    FROM sales s
+    WHERE s.status NOT ILIKE '%cancel%'
+      AND NOT s.billed_by_marketing
+      AND s.total - s.amount_paid > 0
+), account_credit AS (
+    SELECT UPPER(TRIM(customer)) AS customer_key,
+           SUM(GREATEST(amount - applied, 0)) AS available_credit
+    FROM customer_advances
+    WHERE (cheque_status IS NULL OR cheque_status = 'Good')
+    GROUP BY UPPER(TRIM(customer))
+), allocated AS (
+    SELECT o.*,
+           LEAST(o.invoice_balance,
+                 GREATEST(COALESCE(c.available_credit, 0) - o.prior_balance, 0))
+             AS account_credit_applied
+    FROM open_sales o
+    LEFT JOIN account_credit c ON c.customer_key = o.customer_key
+)
+SELECT id, sales_no, date, customer, store_farm, term, due_date, total, amount_paid,
+       account_credit_applied,
+       invoice_balance - account_credit_applied AS balance,
+       GREATEST(0, CURRENT_DATE - COALESCE(due_date, date)) AS days_overdue
+FROM allocated;
 
 CREATE OR REPLACE VIEW v_ar_by_customer AS
 SELECT
-    UPPER(TRIM(customer))            AS customer_key,
-    MIN(customer)                    AS customer,
-    COUNT(*)                         AS open_invoices,
-    SUM(total - amount_paid)         AS balance,
+    UPPER(TRIM(customer)) AS customer_key,
+    MIN(customer) AS customer,
+    COUNT(*) AS open_invoices,
+    SUM(balance) AS balance,
     MAX(GREATEST(0, CURRENT_DATE - COALESCE(due_date, date))) AS max_days_overdue
-FROM sales
-WHERE status NOT ILIKE '%cancel%' AND NOT billed_by_marketing AND total - amount_paid > 0
+FROM v_accounts_receivable
+WHERE balance > 0
 GROUP BY UPPER(TRIM(customer));
 
 -- ----- Custom Bookkeeping Dashboard (income vs expenses by month) -----
